@@ -3,8 +3,9 @@
 Zephyr (v4.5.0) support for the Intuitiv pilot-wire heater gateway, a
 board built around an STM32F412RG (LQFP64).
 
-Project status: blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE). Stock firmware
-erased (it was RDP level 1, now RDP 0).
+Project status: blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE), and the
+`samples/drivers/spi_flash` test passes on the AT25SF641. Stock firmware erased (it was RDP
+level 1, now RDP 0).
 
  **The board ground is tied to the mains (connector P3, probably the phase).**
 The supply is non-isolated. Never connect a debugger, USB, serial adapter or scope ground
@@ -89,8 +90,9 @@ short BOOT0 (pin 60, 100 kΩ to GND, no test point) to 3V3 and power-cycle. Rele
 
 The OpenOCD config uses `reset_config none` (software reset) for the same reason.
 
-Once a Zephyr image with `CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP=y` (set in the board defconfig)
-is flashed, BOOT0 is no longer needed: SWD stays alive while the CPU sleeps in WFI.
+**Every flash needs BOOT0 high.** The probe cannot attach while a Zephyr image runs either
+("target examination failed"), even with `CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP=y` (set in the
+board defconfig), a 100 kHz SWD clock or `dapdirect_swd`. Cause still unknown.
 
 ### Remove readout protection and flash (first time)
 
@@ -117,7 +119,7 @@ The stock firmware ships with RDP level 1. Going back to level 0 **mass-erases t
    ```
 6. Release BOOT0 and power-cycle. Blinky prints `LED state: ON/OFF` at 2 Mbaud on PB6.
 
-Later flashes only need step 5.
+Later flashes: BOOT0 high, power-cycle, step 5, then step 6.
 
 ## Mains connector
 
