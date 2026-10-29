@@ -52,7 +52,7 @@ screen /dev/ttyACM0 2000000
 | PA12 (45) | USB D+ (green) | |
 | PB5 (57) | Middle user button | `sw0`, active high (switch to 3V3), no external pull: internal pull-down |
 | PC2 (10) | Hidden button (pairing reset) | `sw1`, active high (switch to 3V3), no external pull: internal pull-down |
-| PB4 (56) and up | Hardware version resistors | Exact set to list |
+| PA15, PC10–PC12, PD2, PB3, PB4 (50–56) | Hardware version resistors | 6 footprints, 3 fitted, exact pins to trace. With pull-ups, PA15 and PB3 read low |
 | PB6 (58) | Bottom test pad | USART1_TX: console |
 | PA13 (46) | SWDIO | |
 | PA14 (49) | SWCLK | |
@@ -68,10 +68,12 @@ the table above has the corrected pins.
 
 ```
 o o o                              o o o
-5V?  10k pull-up to VDD  10k to ?    PB6  3V3  GND
+5V?  10k pull-up to VDD  10k to BOOT0  PB6  3V3  GND
 ```
 
-The second 10k pad is not BOOT0 (BOOT0 has no test point): still unknown.
+BOOT0 has a 100 kΩ pull-down, so wiring the BOOT0 pad to the 3V3 pad forces BOOT0 high.
+
+PB11 also reads low with a pull-up: unknown, not in the version group.
 
 ## Console
 
@@ -84,15 +86,14 @@ Two options, both TX + GND, **bench supply only, never on mains**:
 
 ## SWD access
 
-NRST is not reachable (280 kΩ pull-up, no test point), and the stock firmware seems to disable
-SWD after boot. To connect anyway, start the ST system bootloader instead of the firmware:
-short BOOT0 (pin 60, 100 kΩ to GND, no test point) to 3V3 and power-cycle. Release it after flashing.
+NRST is not reachable (280 kΩ pull-up, no test point), and the stock firmware disables SWD after
+boot. The OpenOCD config uses `reset_config none` (software reset) for that reason.
 
-The OpenOCD config uses `reset_config none` (software reset) for the same reason.
-
-**Every flash needs BOOT0 high.** The probe cannot attach while a Zephyr image runs either
-("target examination failed"), even with `CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP=y` (set in the
-board defconfig), a 100 kHz SWD clock or `dapdirect_swd`. Cause still unknown.
+**While debugging, wire the BOOT0 test pad to the 3V3 pad.** Every reset then starts the ST ROM
+bootloader, where SWD always works. `west flash` (openocd runner, the default) resets into the
+bootloader, writes the flash, then starts the image from its vector table (`intuitiv_run_app` in
+`support/openocd.cfg`): no power-cycle, no manual step. SWD also attaches to a running image.
+Remove the wire to boot the image standalone.
 
 ### Remove readout protection and flash (first time)
 
@@ -100,14 +101,14 @@ The stock firmware ships with RDP level 1. Going back to level 0 **mass-erases t
 (the stock firmware cannot be read out or backed up first).
 
 1. Bench 3.3 V supply, ST-LINK on GND / SWDIO / SWCLK (+ VDD_TARGET on 3V3).
-2. Short BOOT0 to 3V3 and power-cycle.
+2. Wire the BOOT0 pad to 3V3 and power-cycle.
 3. Check the protection level (RDP byte = bits 15:8 of `FLASH_OPTCR`; `0x55` = level 1,
    `0xAA` = level 0):
    ```bash
    openocd -f boards/vendor/intuitiv/support/openocd.cfg \
        -c 'init' -c 'halt' -c 'mdw 0x40023C14' -c 'shutdown'
    ```
-4. Set RDP level 0 (mass erase), then power-cycle with BOOT0 still shorted:
+4. Set RDP level 0 (mass erase), then power-cycle:
    ```bash
    openocd -f boards/vendor/intuitiv/support/openocd.cfg \
        -c 'init' -c 'halt' -c 'stm32f2x unlock 0' -c 'shutdown'
@@ -115,11 +116,11 @@ The stock firmware ships with RDP level 1. Going back to level 0 **mass-erases t
    `mdw 0x40023C14` should now read `0x0FFFAAED`.
 5. Flash (from `zephyr_workspace`, after the build below):
    ```bash
-   ZEPHYR_BASE=$PWD/zephyr west flash --runner openocd
+   ZEPHYR_BASE=$PWD/zephyr west flash
    ```
-6. Release BOOT0 and power-cycle. Blinky prints `LED state: ON/OFF` at 2 Mbaud on PB6.
+   Blinky starts and prints `LED state: ON/OFF` at 2 Mbaud on PB6.
 
-Later flashes: BOOT0 high, power-cycle, step 5, then step 6.
+Later flashes only need step 5.
 
 ## Mains connector
 
@@ -162,6 +163,6 @@ west config manifest.path intuitiv && west update
 ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv zephyr/samples/basic/blinky \
     -- -DPython3_EXECUTABLE=$(which python3)
 # console over USB instead of the PB6 UART: add -S cdc-acm-console
-west flash   # stm32cubeprogrammer over SWD (default), or --runner openocd
+west flash   # openocd over SWD (default), or --runner stm32cubeprogrammer
 ```
 
