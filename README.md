@@ -52,12 +52,23 @@ screen /dev/ttyACM0 2000000
 | PA12 (45) | USB D+ (green) | |
 | PB5 (57) | Middle user button | `sw0`, active high (switch to 3V3), no external pull: internal pull-down |
 | PC2 (10) | Hidden button (pairing reset) | `sw1`, active high (switch to 3V3), no external pull: internal pull-down |
-| PA15, PC10–PC12, PD2, PB3, PB4 (50–56) | Hardware version resistors | 6 footprints, 3 fitted, exact pins to trace. With pull-ups, PA15 and PB3 read low |
+| PA15, PD2, PB3, PB4 (50, 54–56) | Hardware version resistors | 6 footprints, 3 fitted, exact pins to trace. With pull-ups, PA15 and PB3 read low |
 | PB6 (58) | Bottom test pad | USART1_TX: console |
 | PA13 (46) | SWDIO | |
 | PA14 (49) | SWCLK | |
 | NRST (7) | Reset | 280 kΩ pull-up, no test point. Not wired to the probe |
 | PH0 / PH1 (5, 6) | HSE crystal | |
+| PC5 (25) | AP6212 BT_REG_ON (34) | `bt-reg-on-gpios`, active high |
+| PA2 (16) | USART2_TX → AP6212 UART_RXD (43) | Bluetooth H4, 115200, hw flow control |
+| PA3 (17) | USART2_RX ← AP6212 UART_TXD (42) | |
+| PA1 (15) | USART2_RTS → AP6212 UART_CTS_N (44) | |
+| PA0 (14) | USART2_CTS ← AP6212 UART_RTS_N (41) | |
+| PC8 (39) | AP6212 BT_HOST_WAKE (7) | `bt-host-wake-gpios` |
+| PC12 (53) | AP6212 WL_REG_ON (12) | Hogged low (Wi-Fi unsupported: no F4 SDHC driver) |
+| PB10 (29) | AP6212 WL_HOST_WAKE (13), via 1 kΩ | Unused |
+| PC10, PC11 (51, 52) | AP6212, role unknown | Probably SDIO (D2/D3 or similar) |
+| — | AP6212 LPO (24) | No 32.768 kHz source found |
+
 
 The optotriac LED anode sits on 3V3: PC6 alone turns it on through the cathode switch.
 
