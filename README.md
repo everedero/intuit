@@ -37,8 +37,8 @@ screen /dev/ttyACM0 2000000
 | Pin (LQFP64) | Function | Notes |
 | --- | --- | --- |
 | PB13 (34) | RGB LED red, active low | `led0`, used by blinky. TIM1_CH1N |
-| PB14 (35) | RGB LED channel B, active low | `led1`. TIM1_CH2N |
-| PB15 (36) | RGB LED channel C, active low | `led2`. TIM1_CH3N |
+| PB14 (35) | RGB LED green, active low | `led1`. TIM1_CH2N |
+| PB15 (36) | RGB LED blue, active low | `led2`. TIM1_CH3N |
 | VDDA (13) / VDD (19) | Optotriac LED anode (via 200 Ω) | Fed from 3V3 |
 | PC6 (37) | Optotriac LED cathode switch (K38 FN, SOT-23, no test point) | Assumed active high. Hogged low in DTS |
 | PC7 (38) | Zero-cross detection, TP2 (EXTI7) | Large-ratio, clipped divider on neutral |
@@ -50,8 +50,8 @@ screen /dev/ttyACM0 2000000
 | PA7 (23) | SPI1 MOSI, SPI flash | |
 | PA11 (44) | USB D− (white) | |
 | PA12 (45) | USB D+ (green) | |
-| PB5 (57) | Middle user button | `sw0`, polarity assumed active low |
-| PC2 (10) | Hidden button (pairing reset) | `sw1`, polarity assumed active low |
+| PB5 (57) | Middle user button | `sw0`, active high (switch to 3V3), no external pull: internal pull-down |
+| PC2 (10) | Hidden button (pairing reset) | `sw1`, active high (switch to 3V3), no external pull: internal pull-down |
 | PB4 (56) and up | Hardware version resistors | Exact set to list |
 | PB6 (58) | Bottom test pad | USART1_TX: console |
 | PA13 (46) | SWDIO | |

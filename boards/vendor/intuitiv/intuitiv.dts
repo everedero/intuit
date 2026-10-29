@@ -27,14 +27,14 @@
 			label = "RGB LED red (PB13)";
 		};
 
-		led_b: led_b {
+		led_green: led_green {
 			gpios = <&gpiob 14 GPIO_ACTIVE_LOW>;
-			label = "RGB LED channel B (PB14)";
+			label = "RGB LED green (PB14)";
 		};
 
-		led_c: led_c {
+		led_blue: led_blue {
 			gpios = <&gpiob 15 GPIO_ACTIVE_LOW>;
-			label = "RGB LED channel C (PB15)";
+			label = "RGB LED blue (PB15)";
 		};
 	};
 
@@ -43,13 +43,13 @@
 		compatible = "gpio-keys";
 
 		button_middle: button_middle {
-			gpios = <&gpiob 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			gpios = <&gpiob 5 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
 			label = "Middle button (PB5)";
 			zephyr,code = <INPUT_KEY_0>;
 		};
 
 		button_pairing: button_pairing {
-			gpios = <&gpioc 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			gpios = <&gpioc 2 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
 			label = "Hidden pairing reset button (PC2)";
 			zephyr,code = <INPUT_KEY_1>;
 		};
@@ -57,8 +57,8 @@
 
 	aliases {
 		led0 = &led_red;
-		led1 = &led_b;
-		led2 = &led_c;
+		led1 = &led_green;
+		led2 = &led_blue;
 		sw0 = &button_middle;
 		sw1 = &button_pairing;
 	};
