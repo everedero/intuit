@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
+board:
+  name: intuitiv
+  full_name: Intuitiv pilot-wire gateway
+  vendor: vendor
+  socs:
+    - name: stm32f412rx

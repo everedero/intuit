@@ -1,0 +1,67 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include <st/f4/stm32f412Xg.dtsi>
+#include <st/f4/stm32f412r(e-g)tx-pinctrl.dtsi>
+
+/ {
+	model = "Intuitiv pilot-wire gateway";
+	compatible = "vendor,intuitiv";
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+	};
+
+	/* RGB LED, active low. Colour of each pin not identified yet. */
+	leds {
+		compatible = "gpio-leds";
+
+		led_a: led_a {
+			gpios = <&gpioc 10 GPIO_ACTIVE_LOW>;
+			label = "RGB LED channel A (PC10)";
+		};
+
+		led_b: led_b {
+			gpios = <&gpioc 11 GPIO_ACTIVE_LOW>;
+			label = "RGB LED channel B (PC11)";
+		};
+
+		led_c: led_c {
+			gpios = <&gpioa 15 GPIO_ACTIVE_LOW>;
+			label = "RGB LED channel C (PA15)";
+		};
+	};
+
+	aliases {
+		led0 = &led_a;
+		led1 = &led_b;
+		led2 = &led_c;
+	};
+};
+
+/* Crystal marked "26": assumed 26 MHz. Fallback: HSI (16 MHz) with div-m = 8. */
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(26)>;
+	status = "okay";
+};
+
+/* 26 MHz / 13 = 2 MHz, x96 = 192 MHz VCO, /2 = 96 MHz SYSCLK, /4 = 48 MHz */
+&pll {
+	div-m = <13>;
+	mul-n = <96>;
+	div-p = <2>;
+	div-q = <4>;
+	clocks = <&clk_hse>;
+	status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(96)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <2>;
+	apb2-prescaler = <1>;
+};
