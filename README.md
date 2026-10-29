@@ -3,11 +3,17 @@
 Zephyr (v4.5.0) support for the Intuitiv pilot-wire heater gateway, a
 board built around an STM32F412RG (LQFP64).
 
-Project status: nothing tested yet, skeleton project only.
+Project status: blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE). Stock firmware
+erased (it was RDP level 1, now RDP 0).
 
  **The board ground is tied to the mains (connector P3, probably the phase).**
 The supply is non-isolated. Never connect a debugger, USB, serial adapter or scope ground
 while the board is plugged into the mains. Program it powered from 3.3 V only.
+
+TX testpoint (original app):
+```
+screen /dev/ttyACM0 2000000
+```
 
 ## Hardware
 
@@ -21,29 +27,97 @@ while the board is plugged into the mains. Program it powered from 3.3 V only.
 | NCP1117 | 3.3 V LDO |
 | MOC3063M | Zero-cross optotriac (triac driver) |
 | T435-600B | 4 A triac, pilot-wire output |
-| Crystal "NSK J 26TAG" | STM32 HSE, **assumed 26 MHz** |
+| Crystal "NSK B 26TAG" | STM32 HSE, **assumed 26 MHz** |
+| Crystal "NSK B 16TAH" | ATSAMR21 clock, assumed 16 MHz |
+| Crystal "NSK J 26TAG" | AP6212 clock, assumed 26 MHz |
 
 ## STM32 pin map
 
-| Pin | Function | Notes |
+| Pin (LQFP64) | Function | Notes |
 | --- | --- | --- |
-| PC10 | RGB LED channel A, active low | `led0`, used by blinky. Colour unknown |
-| PC11 | RGB LED channel B, active low | `led1`. Colour unknown |
-| PA15 | RGB LED channel C, active low | `led2`. Colour unknown. JTDI at reset, free as GPIO with SWD only |
-| PB10 + PB14 | Optotriac LED anode (via 200 Ω) | Both drive the anode together |
-| PC12 | Optotriac LED cathode switch (K38 FN, SOT-23) | Assumed active high, to verify |
-| PD2 | Zero-cross detection (EXTI2) | Large-ratio, clipped divider on neutral |
-| PB1 | Mains voltage / polarity, ADC1_IN9 | 3× 300 kΩ / 2 kΩ divider |
-| PC4 | Pilot-wire output feedback, ADC1_IN14 | 3× 16 kΩ / 2 kΩ divider |
-| PA13 | SWDIO | |
-| PA14 | SWCLK | |
-| NRST | Reset | RC (cap + 10 kΩ to 3V3). Connect under reset |
-| PH0 / PH1 | HSE crystal | |
+| PB13 (34) | RGB LED red, active low | `led0`, used by blinky. TIM1_CH1N |
+| PB14 (35) | RGB LED channel B, active low | `led1`. TIM1_CH2N |
+| PB15 (36) | RGB LED channel C, active low | `led2`. TIM1_CH3N |
+| VDDA (13) / VDD (19) | Optotriac LED anode (via 200 Ω) | Fed from 3V3 |
+| PC6 (37) | Optotriac LED cathode switch (K38 FN, SOT-23, no test point) | Assumed active high. Hogged low in DTS |
+| PC7 (38) | Zero-cross detection, TP2 (EXTI7) | Large-ratio, clipped divider on neutral |
+| PC3 (11) | Mains voltage / polarity, TP1, ADC1_IN13 | 3× 300 kΩ / 2 kΩ divider |
+| PC0 (8) | Pilot-wire output feedback, TP3, ADC1_IN10 | 3× 16 kΩ / 2 kΩ divider |
+| PA4 (20) | SPI flash CS | GPIO chip select |
+| PA5 (21) | SPI1 SCK, SPI flash | |
+| PA6 (22) | SPI1 MISO, SPI flash | |
+| PA7 (23) | SPI1 MOSI, SPI flash | |
+| PA11 (44) | USB D− (white) | |
+| PA12 (45) | USB D+ (green) | |
+| PB5 (57) | Middle user button | `sw0`, polarity assumed active low |
+| PC2 (10) | Hidden button (pairing reset) | `sw1`, polarity assumed active low |
+| PB4 (56) and up | Hardware version resistors | Exact set to list |
+| PB6 (58) | Bottom test pad | USART1_TX: console |
+| PA13 (46) | SWDIO | |
+| PA14 (49) | SWCLK | |
+| NRST (7) | Reset | 280 kΩ pull-up, no test point. Not wired to the probe |
+| PH0 / PH1 (5, 6) | HSE crystal | |
 
-The optotriac LED only lights when PB10/PB14 are high **and** PC12 turns the cathode switch on.
-Two conditions protect against a single stuck GPIO.
+The optotriac LED anode sits on 3V3: PC6 alone turns it on through the cathode switch.
 
-The LQFP64 pin numbers of PB10, PB14, PC12, PD2, PB1 and PC4 still need rechecking.
+All pins except SWD were first read rotated by 90° (16 pins);
+the table above has the corrected pins.
+
+## Bottom test pad (unmarked, near the MCU)
+
+```
+o o o                              o o o
+5V?  10k pull-up to VDD  10k to ?    PB6  3V3  GND
+```
+
+The second 10k pad is not BOOT0 (BOOT0 has no test point): still unknown.
+
+## Console
+
+Two options, both TX + GND, **bench supply only, never on mains**:
+
+1. **USB connector, no soldering**: build with `-S cdc-acm-console`, plug USB, open `/dev/ttyACM0`.
+2. **UART on the bottom test pad** (default build): USART1 TX on PB6, **2 000 000 baud 8N1**,
+   the same speed as the stock firmware (it prints `[Intuitiv Gateway]` at boot).
+   With a Nucleo ST-LINK/V2.1: PB6 to CN3 **RX**, read on `/dev/ttyACM0`.
+
+## SWD access
+
+NRST is not reachable (280 kΩ pull-up, no test point), and the stock firmware seems to disable
+SWD after boot. To connect anyway, start the ST system bootloader instead of the firmware:
+short BOOT0 (pin 60, 100 kΩ to GND, no test point) to 3V3 and power-cycle. Release it after flashing.
+
+The OpenOCD config uses `reset_config none` (software reset) for the same reason.
+
+Once a Zephyr image with `CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP=y` (set in the board defconfig)
+is flashed, BOOT0 is no longer needed: SWD stays alive while the CPU sleeps in WFI.
+
+### Remove readout protection and flash (first time)
+
+The stock firmware ships with RDP level 1. Going back to level 0 **mass-erases the flash**
+(the stock firmware cannot be read out or backed up first).
+
+1. Bench 3.3 V supply, ST-LINK on GND / SWDIO / SWCLK (+ VDD_TARGET on 3V3).
+2. Short BOOT0 to 3V3 and power-cycle.
+3. Check the protection level (RDP byte = bits 15:8 of `FLASH_OPTCR`; `0x55` = level 1,
+   `0xAA` = level 0):
+   ```bash
+   openocd -f boards/vendor/intuitiv/support/openocd.cfg \
+       -c 'init' -c 'halt' -c 'mdw 0x40023C14' -c 'shutdown'
+   ```
+4. Set RDP level 0 (mass erase), then power-cycle with BOOT0 still shorted:
+   ```bash
+   openocd -f boards/vendor/intuitiv/support/openocd.cfg \
+       -c 'init' -c 'halt' -c 'stm32f2x unlock 0' -c 'shutdown'
+   ```
+   `mdw 0x40023C14` should now read `0x0FFFAAED`.
+5. Flash (from `zephyr_workspace`, after the build below):
+   ```bash
+   ZEPHYR_BASE=$PWD/zephyr west flash --runner openocd
+   ```
+6. Release BOOT0 and power-cycle. Blinky prints `LED state: ON/OFF` at 2 Mbaud on PB6.
+
+Later flashes only need step 5.
 
 ## Mains connector
 
@@ -57,7 +131,7 @@ The LQFP64 pin numbers of PB10, PB14, PC12, PD2, PB1 and PC4 still need rechecki
 
 Voltage measured between P2 and neutral. The optotriac fires at the next zero crossing after its
 LED turns on, and the triac turns off at the next zero crossing after it turns off. So toggling
-the LED once per half-cycle (synchronised on PD2, polarity from PB1) selects half-waves.
+the LED once per half-cycle (synchronised on PC7, polarity from PC3) selects half-waves.
 
 | Order | Signal | Firmware |
 | --- | --- | --- |
@@ -67,7 +141,7 @@ the LED once per half-cycle (synchronised on PD2, polarity from PB1) selects hal
 | Arrêt | Positive half-wave | LED on during positive half-waves only |
 | Confort −1 / −2 | 230 V for 3 s / 7 s every 5 min | Timed full-wave pulses |
 
-PC4 lets firmware check what actually came out.
+PC0 lets firmware check what actually came out.
 
 ## Clock
 
@@ -85,7 +159,7 @@ west config manifest.path intuitiv && west update
 # ZEPHYR_BASE must be absolute: a relative one is resolved from the sample dir
 ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv zephyr/samples/basic/blinky \
     -- -DPython3_EXECUTABLE=$(which python3)
+# console over USB instead of the PB6 UART: add -S cdc-acm-console
 west flash   # stm32cubeprogrammer over SWD (default), or --runner openocd
 ```
 
-No console is configured yet: the UART pins are not identified.

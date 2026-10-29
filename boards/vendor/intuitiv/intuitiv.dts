@@ -5,6 +5,7 @@
 /dts-v1/;
 #include <st/f4/stm32f412Xg.dtsi>
 #include <st/f4/stm32f412r(e-g)tx-pinctrl.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
 	model = "Intuitiv pilot-wire gateway";
@@ -13,36 +14,57 @@
 	chosen {
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
+		zephyr,console = &usart1;
+		zephyr,shell-uart = &usart1;
 	};
 
 	/* RGB LED, active low. Colour of each pin not identified yet. */
 	leds {
 		compatible = "gpio-leds";
 
-		led_a: led_a {
-			gpios = <&gpioc 10 GPIO_ACTIVE_LOW>;
-			label = "RGB LED channel A (PC10)";
+		led_red: led_red {
+			gpios = <&gpiob 13 GPIO_ACTIVE_LOW>;
+			label = "RGB LED red (PB13)";
 		};
 
 		led_b: led_b {
-			gpios = <&gpioc 11 GPIO_ACTIVE_LOW>;
-			label = "RGB LED channel B (PC11)";
+			gpios = <&gpiob 14 GPIO_ACTIVE_LOW>;
+			label = "RGB LED channel B (PB14)";
 		};
 
 		led_c: led_c {
-			gpios = <&gpioa 15 GPIO_ACTIVE_LOW>;
-			label = "RGB LED channel C (PA15)";
+			gpios = <&gpiob 15 GPIO_ACTIVE_LOW>;
+			label = "RGB LED channel C (PB15)";
+		};
+	};
+
+	/* Polarity not measured yet: assumed active low */
+	buttons {
+		compatible = "gpio-keys";
+
+		button_middle: button_middle {
+			gpios = <&gpiob 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			label = "Middle button (PB5)";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+
+		button_pairing: button_pairing {
+			gpios = <&gpioc 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			label = "Hidden pairing reset button (PC2)";
+			zephyr,code = <INPUT_KEY_1>;
 		};
 	};
 
 	aliases {
-		led0 = &led_a;
+		led0 = &led_red;
 		led1 = &led_b;
 		led2 = &led_c;
+		sw0 = &button_middle;
+		sw1 = &button_pairing;
 	};
 };
 
-/* Crystal marked "26": assumed 26 MHz. Fallback: HSI (16 MHz) with div-m = 8. */
+/* Crystal marked "NSK B 26TAG": assumed 26 MHz. Fallback: HSI (16 MHz) with div-m = 8. */
 &clk_hse {
 	clock-frequency = <DT_FREQ_M(26)>;
 	status = "okay";
@@ -64,4 +86,44 @@
 	ahb-prescaler = <1>;
 	apb1-prescaler = <2>;
 	apb2-prescaler = <1>;
+};
+
+/* Console on the bottom test pad wired to PB6. TX only: PB7 not traced */
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pb6>;
+	pinctrl-names = "default";
+	current-speed = <2000000>;
+	status = "okay";
+};
+
+/* Optotriac cathode switch: keep it off until firmware drives the triac */
+&gpioc {
+	opto_cathode_off {
+		gpio-hog;
+		gpios = <6 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
+};
+
+/* USB connector, for the cdc-acm-console snippet. 48 MHz comes from PLLQ */
+zephyr_udc0: &usbotg_fs {
+	pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/* AT25SF641 on SPI1. SPI1 sits on APB2 (96 MHz). Start low until wiring is confirmed */
+&spi1 {
+	pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pa7>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpioa 4 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spi_flash: flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <DT_FREQ_M(8)>;
+		size = <DT_SIZE_M(64)>; /* bits */
+		jedec-id = [1f 32 17];
+	};
 };
