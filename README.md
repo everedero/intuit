@@ -327,7 +327,8 @@ ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv intuitiv/apps/wifi -- \
 west flash
 ```
 
-The app scans and logs the access points. If an SSID is set, it then connects and starts DHCP.
+The app scans and logs the access points. If an SSID is set, it then connects, starts DHCP and
+pings 8.8.8.8 four times.
 WHD allocates with `k_malloc`, so this app has a 48 KiB heap (`CONFIG_HEAP_MEM_POOL_SIZE`). That
 heap is for the vendor driver only.
 

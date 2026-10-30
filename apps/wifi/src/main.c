@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Wi-Fi bring-up on the AP6212: scan and log the networks, then join
- * CONFIG_INTUITIV_WIFI_SSID (if set) and wait for a DHCP address.
+ * CONFIG_INTUITIV_WIFI_SSID (if set), wait for a DHCP address and ping 8.8.8.8.
  */
 
 #include <zephyr/kernel.h>
@@ -11,12 +11,15 @@
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/net/dhcpv4.h>
+#include <zephyr/net/icmp.h>
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 static struct net_mgmt_event_callback wifi_cb, ipv4_cb;
 static K_SEM_DEFINE(scan_done, 0, 1);
 static K_SEM_DEFINE(connected, 0, 1);
+static K_SEM_DEFINE(bound, 0, 1);
+static K_SEM_DEFINE(pong, 0, 1);
 static int found;
 
 static void wifi_event(struct net_mgmt_event_callback *cb, uint64_t event, struct net_if *iface)
@@ -49,8 +52,48 @@ static void ipv4_event(struct net_mgmt_event_callback *cb, uint64_t event, struc
 		if (a->is_used && a->addr_type == NET_ADDR_DHCP) {
 			LOG_INF("DHCP address %s",
 				net_addr_ntop(AF_INET, &a->address.in_addr, buf, sizeof(buf)));
+			k_sem_give(&bound);
 		}
 	}
+}
+
+static enum net_verdict ping_reply(struct net_icmp_ctx *ctx, struct net_pkt *pkt,
+				   struct net_icmp_ip_hdr *ip_hdr, struct net_icmp_hdr *icmp_hdr,
+				   void *user_data)
+{
+	k_sem_give(&pong);
+	return NET_OK;
+}
+
+static void ping(struct net_if *iface, const char *host, int count)
+{
+	struct net_sockaddr_in dst = {.sin_family = NET_AF_INET};
+	struct net_icmp_ctx ctx;
+	int ok = 0;
+
+	net_addr_pton(NET_AF_INET, host, &dst.sin_addr);
+	if (net_icmp_init_ctx(&ctx, NET_AF_INET, NET_ICMPV4_ECHO_REPLY, 0, ping_reply)) {
+		LOG_ERR("no ICMP context");
+		return;
+	}
+	for (int i = 0; i < count; i++) {
+		struct net_icmp_ping_params params = {.sequence = i, .data_size = 32};
+		int64_t t = k_uptime_get();
+		int err = net_icmp_send_echo_request(&ctx, iface, (struct net_sockaddr *)&dst,
+						     &params, NULL);
+
+		if (err) {
+			LOG_ERR("ping %s seq %d: send failed (%d)", host, i, err);
+		} else if (k_sem_take(&pong, K_SECONDS(2))) {
+			LOG_WRN("ping %s seq %d: timeout", host, i);
+		} else {
+			LOG_INF("ping %s seq %d: %lld ms", host, i, k_uptime_get() - t);
+			ok++;
+		}
+		k_sleep(K_SECONDS(1));
+	}
+	LOG_INF("ping %s: %d/%d replies", host, ok, count);
+	net_icmp_cleanup_ctx(&ctx);
 }
 
 int main(void)
@@ -105,5 +148,10 @@ int main(void)
 		return 0;
 	}
 	net_dhcpv4_start(iface);
+	if (k_sem_take(&bound, K_SECONDS(30))) {
+		LOG_ERR("no DHCP address after 30 s");
+		return 0;
+	}
+	ping(iface, "8.8.8.8", 4);
 	return 0;
 }
