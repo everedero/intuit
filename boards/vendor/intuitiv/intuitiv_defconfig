@@ -9,3 +9,5 @@ CONFIG_CONSOLE=y
 CONFIG_UART_CONSOLE=y
 # NRST is not wired: keep SWD alive in WFI so the probe can attach
 CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP=y
+# AP6212 LPO from TIM2 (board.c)
+CONFIG_PWM=y

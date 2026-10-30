@@ -3,7 +3,7 @@
 Zephyr (v4.5.0) support for the Intuitiv pilot-wire heater gateway, a
 board built around an STM32F412RG (LQFP64).
 
-Project status: blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE), and the
+Project status: Bluetooth LE works (the PC connects to the peripheral sample), blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE), and the
 `samples/drivers/spi_flash` test passes on the AT25SF641. Stock firmware erased (it was RDP
 level 1, now RDP 0).
 
@@ -21,7 +21,7 @@ screen /dev/ttyACM0 2000000
 | Part | Function |
 | --- | --- |
 | STM32F412RG (LQFP64) | Main MCU |
-| AP6212 | Wi-Fi + Bluetooth SiP |
+| AP6212 (BCM4343A0, not the AP6212A) | Wi-Fi + Bluetooth 4.1 SiP |
 | ATSAMR21E18A | 2.4 GHz 802.15.4 radio MCU |
 | AT25SF641 | 64 Mbit SPI NOR flash |
 | VIPER013LS | Non-isolated offline converter (half-wave rectified mains) |
@@ -31,6 +31,7 @@ screen /dev/ttyACM0 2000000
 | Crystal "NSK B 26TAG" | STM32 HSE, **assumed 26 MHz** |
 | Crystal "NSK B 16TAH" | ATSAMR21 clock, assumed 16 MHz |
 | Crystal "NSK J 26TAG" | AP6212 clock, assumed 26 MHz |
+| 32.768 kHz crystal | STM32 LSE (PC14/PC15), starts. Not wired to the AP6212 (MCO1 on PA8 does not reach it) |
 
 ## STM32 pin map
 
@@ -52,7 +53,7 @@ screen /dev/ttyACM0 2000000
 | PA12 (45) | USB D+ (green) | |
 | PB5 (57) | Middle user button | `sw0`, active high (switch to 3V3), no external pull: internal pull-down |
 | PC2 (10) | Hidden button (pairing reset) | `sw1`, active high (switch to 3V3), no external pull: internal pull-down |
-| PA15, PD2, PB3, PB4 (50, 54–56) | Hardware version resistors | 6 footprints, 3 fitted, exact pins to trace. With pull-ups, PA15 and PB3 read low |
+| PA15, PB3, PB4 (50, 55, 56) | Hardware version resistors (assumed) | 6 footprints, 3 fitted, exact pins to trace. With internal pulls, PA15 and PB3 read low, PB4 high |
 | PB6 (58) | Bottom test pad | USART1_TX: console |
 | PA13 (46) | SWDIO | |
 | PA14 (49) | SWCLK | |
@@ -63,11 +64,9 @@ screen /dev/ttyACM0 2000000
 | PA3 (17) | USART2_RX ← AP6212 UART_TXD (42) | |
 | PA1 (15) | USART2_RTS → AP6212 UART_CTS_N (44) | |
 | PA0 (14) | USART2_CTS ← AP6212 UART_RTS_N (41) | |
-| PC8 (39) | AP6212 BT_HOST_WAKE (7) | `bt-host-wake-gpios` |
-| PC12 (53) | AP6212 WL_REG_ON (12) | Hogged low (Wi-Fi unsupported: no F4 SDHC driver) |
-| PB10 (29) | AP6212 WL_HOST_WAKE (13), via 1 kΩ | Unused |
-| PC10, PC11 (51, 52) | AP6212, role unknown | Probably SDIO (D2/D3 or similar) |
-| — | AP6212 LPO (24) | No 32.768 kHz source found |
+| PB10 (29) | AP6212 LPO (24), via 1 kΩ | 32.768 kHz from TIM2_CH3 (96 MHz / 2929, +240 ppm). Bluetooth answers nothing but HCI_Reset without it |
+| PC8–PC12, PD2 (39–42, 53, 54) | AP6212 SDIO D0–D3, CLK, CMD | Wi-Fi, unused (no F4 SDIO driver). D0–D3 and CMD are pulled up by the AP6212 |
+| — | AP6212 WL_REG_ON, BT/WL host wake | Not found |
 
 
 The optotriac LED anode sits on 3V3: PC6 alone turns it on through the cathode switch.
@@ -177,3 +176,22 @@ ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv zephyr/samples/basic/blinky \
 west flash   # openocd over SWD (default), or --runner stm32cubeprogrammer
 ```
 
+## Bluetooth
+
+The AP6212 Bluetooth core is a BCM4343A0 (LMP subversion 0x2122), driven by the Zephyr AIROC
+H4 driver. It needs the AP6212 (non-A) patchram: the CYW43438 / BCM43430A1 patches (AP6212A,
+Raspberry Pi) download fine but hang the controller at launch. The patch is not committed:
+
+```bash
+curl -L -o intuitiv/apps/bluetooth/bcm43438a0.hcd \
+    https://raw.githubusercontent.com/armbian/firmware/master/ap6212/bcm43438a0.hcd
+ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv zephyr/samples/bluetooth/peripheral -- \
+    -DEXTRA_CONF_FILE=$PWD/intuitiv/apps/bluetooth/intuitiv.conf \
+    -DPython3_EXECUTABLE=$(which python3)
+west flash
+bluetoothctl --timeout 15 scan on   # "Zephyr Peripheral Sample Long"
+```
+
+The public address is the Broadcom default `43:43:A0:12:1F:AC`, the same on every unprogrammed
+chip; the sample advertises with a random static address. Give each board its own address
+before deploying several.
