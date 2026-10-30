@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: STM32F4 SDIO host controller (SDIO v1 IP, no IDMA)
+
+compatible: "st,stm32f4-sdio"
+
+include: [sdhc.yaml, pinctrl-device.yaml, reset-device.yaml]
+
+properties:
+  reg:
+    required: true
+
+  clocks:
+    required: true
+
+  interrupts:
+    required: true
+
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true
+
+  bus-width:
+    type: int
+    default: 4
+    enum: [1, 4]
+    description: Data lines wired to the card

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config SDHC_STM32F4_SDIO
+	bool "STM32F4 SDIO host (SDIO cards)"
+	default y
+	depends on DT_HAS_ST_STM32F4_SDIO_ENABLED
+	depends on SDHC
+	select SDHC_SUPPORTS_NATIVE_MODE
+	select PINCTRL
+	help
+	  SD host driver for the SDIO (v1) peripheral of the STM32F4, which
+	  the upstream SDMMC driver does not cover.

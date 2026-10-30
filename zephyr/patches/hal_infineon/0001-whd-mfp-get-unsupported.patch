@@ -1,0 +1,13 @@
+diff --git a/whd-expansion/WHD/COMPONENT_WIFI5/src/whd_wifi_api.c b/whd-expansion/WHD/COMPONENT_WIFI5/src/whd_wifi_api.c
+index c38c095..0738eb9 100644
+--- a/whd-expansion/WHD/COMPONENT_WIFI5/src/whd_wifi_api.c
++++ b/whd-expansion/WHD/COMPONENT_WIFI5/src/whd_wifi_api.c
+@@ -1611,7 +1611,7 @@ static whd_result_t whd_wifi_prepare_join(whd_interface_t ifp, whd_security_t au
+     if (auth_type != WHD_SECURITY_OPEN)
+     {
+         /* Setting wsec will overwrite mfp setting in older branches, store value before setting wsec */
+-        CHECK_RETURN(whd_wifi_get_iovar_value(ifp, IOVAR_STR_MFP, &auth_mfp) );
++        CHECK_RETURN_UNSUPPORTED_CONTINUE(whd_wifi_get_iovar_value(ifp, IOVAR_STR_MFP, &auth_mfp) );
+     }
+ 
+     /* Set Wireless Security Type */

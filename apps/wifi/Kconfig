@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config INTUITIV_WIFI_FW
+	string "Wi-Fi firmware image, relative to the app"
+	default "fw/brcmfmac43430a0-sdio.bin"
+
+config INTUITIV_WIFI_NVRAM
+	string "Wi-Fi NVRAM text, relative to the app"
+	default "fw/nvram_ap6212.txt"
+
+config INTUITIV_WIFI_SSID
+	string "Network to join after the scan (empty: scan only)"
+	default ""
+
+config INTUITIV_WIFI_PSK
+	string "WPA2 passphrase"
+	default ""
+
+source "Kconfig.zephyr"

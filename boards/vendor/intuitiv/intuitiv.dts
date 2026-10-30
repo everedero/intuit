@@ -192,3 +192,31 @@ zephyr_udc0: &usbotg_fs {
 &rng {
 	status = "okay";
 };
+
+/* SDIO clock: CK48 from PLLQ (48 MHz) */
+&clk48 {
+	status = "okay";
+};
+
+/*
+ * AP6212 Wi-Fi on the SDIO peripheral. The upstream st,stm32-sdmmc driver is
+ * for SD cards only, so this uses the intuitiv module's SDIO host driver.
+ * WL_REG_ON is PB12 (found by toggling free pins); WL_HOST_WAKE is not routed,
+ * so card interrupts come in-band on DAT1. 12 MHz max: polled FIFO.
+ */
+&sdmmc1 {
+	compatible = "st,stm32f4-sdio";
+	pinctrl-0 = <&sdio_d0_pc8 &sdio_d1_pc9 &sdio_d2_pc10 &sdio_d3_pc11
+		     &sdio_ck_pc12 &sdio_cmd_pd2>;
+	pinctrl-names = "default";
+	bus-width = <4>;
+	power-delay-ms = <150>;
+	max-bus-freq = <12000000>;
+	status = "okay";
+
+	airoc_wifi: airoc-wifi {
+		compatible = "infineon,airoc-wifi";
+		wifi-reg-on-gpios = <&gpiob 12 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+};

@@ -67,8 +67,9 @@ screen /dev/ttyACM0 2000000
 | PA1 (15) | USART2_RTS → AP6212 UART_CTS_N (44) | |
 | PA0 (14) | USART2_CTS ← AP6212 UART_RTS_N (41) | |
 | PB10 (29) | AP6212 LPO (24), via 1 kΩ | 32.768 kHz from TIM2_CH3 (96 MHz / 2929, +240 ppm). Bluetooth answers nothing but HCI_Reset without it |
-| PC8–PC12, PD2 (39–42, 53, 54) | AP6212 SDIO D0–D3, CLK, CMD | Wi-Fi, unused (no F4 SDIO driver). D0–D3 and CMD are pulled up by the AP6212 |
-| — | AP6212 WL_REG_ON, BT/WL host wake | Not found |
+| PC8–PC12, PD2 (39–42, 53, 54) | AP6212 SDIO D0–D3, CLK, CMD | Wi-Fi, `st,stm32f4-sdio` driver (`drivers/sdhc`). D0–D3 and CMD are pulled up by the AP6212 |
+| PB12 (33) | AP6212 WL_REG_ON (12) | `wifi-reg-on-gpios`, active high. Found by driving the free pins in turn: the pin 12 → pin 10 trace was wrong |
+| — | AP6212 BT/WL host wake | Not routed: Wi-Fi uses the in-band SDIO interrupt |
 
 
 The optotriac LED anode sits on 3V3: PC6 alone turns it on through the cathode switch.
@@ -285,3 +286,50 @@ docker run -d --name homeassistant --restart unless-stopped --network host \
 HA then discovers "Intuitiv" from its service UUID (Settings → Devices & services). The
 climate entity has `heat` / `off` (off = Arrêt), plus the presets Confort, Éco, Hors-gel (`away`),
 Confort −1 and Confort −2. It reconnects when the board advertises again.
+
+## Wi-Fi
+
+The Wi-Fi core (BCM43430A0) sits on the STM32 SDIO peripheral. Zephyr's STM32 SDHC driver needs
+the SDMMC IDMA, which the F4 lacks, so this module has its own `st,stm32f4-sdio` SDHC driver
+(`drivers/sdhc`): polled FIFO, 4-bit, in-band card interrupt, clock capped by `max-bus-freq`
+(12 MHz). The Zephyr AIROC (WHD) driver sits on top. WL_REG_ON is PB12.
+
+The firmware and NVRAM are not committed. WHD's hal_infineon blobs are for 43438A1, which this
+chip is not:
+
+```bash
+# once per checkout: WHD patch (hal_infineon), see zephyr/patches.yml
+west patch -sm intuitiv apply
+cp /usr/lib/firmware/brcm/brcmfmac43430a0-sdio.bin intuitiv/apps/wifi/fw/
+curl -L -o intuitiv/apps/wifi/fw/nvram_ap6212.txt \
+    https://raw.githubusercontent.com/armbian/firmware/master/ap6212/nvram.txt
+ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv intuitiv/apps/wifi -- \
+    -DCONFIG_INTUITIV_WIFI_SSID='"myssid"' -DCONFIG_INTUITIV_WIFI_PSK='"mypsk"' \
+    -DPython3_EXECUTABLE=$(which python3)
+west flash
+```
+
+The app scans and logs the access points. If an SSID is set, it then connects and starts DHCP.
+WHD allocates with `k_malloc`, so this app has a 48 KiB heap (`CONFIG_HEAP_MEM_POOL_SIZE`). That
+heap is for the vendor driver only.
+
+On the bench, the firmware loads (7.13.53.9, built-in CLM), the MAC is read from the chip and the
+scan lists the nearby networks. **Open networks only for now.** WHD expects the firmware to run
+the WPA handshake itself (the `idsup` feature), and neither A0 image has it: the Linux FMAC
+build (7.13.53.9) and the Android DHD build (`fw_bcm43438a0.bin`, 7.10.226.49) leave it to a
+host wpa_supplicant. A WPA2 join then fails with `whd_wifi_set_passphrase ... checkres =
+33556434` (`WLC_SET_WSEC_PMK` → bad argument). A WICED-style A0 image (feature string with
+`idsup-idauth`) is needed. The stock firmware ran a soft-AP, so it may have kept one on the
+SPI flash.
+
+The patch in `zephyr/patches/hal_infineon` makes WHD accept firmware without the `mfp` iovar
+(the 7.13 image has none). Without it, the join stops earlier in `whd_wifi_prepare_join`.
+
+**Flashing:** `west flash` does not verify, and on this board the ST-LINK has silently
+corrupted an image once (one extra word, the rest shifted), so the board crashed at boot.
+Verify after a flash:
+
+```bash
+openocd -s intuitiv/boards/vendor/intuitiv/support -f intuitiv/boards/vendor/intuitiv/support/openocd.cfg \
+    -c init -c "reset halt" -c "verify_image build/zephyr/zephyr.hex" -c intuitiv_run_app
+```
