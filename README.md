@@ -3,7 +3,8 @@
 Zephyr (v4.5.0) support for the Intuitiv pilot-wire heater gateway, a
 board built around an STM32F412RG (LQFP64).
 
-Project status: Bluetooth LE works (the PC pairs with the peripheral sample, bonds survive a
+Project status: pilot wire over Bluetooth works on the bench (simulated zero-cross, no mains
+yet), Bluetooth LE works (the PC pairs with the peripheral sample, bonds survive a
 reboot), settings persist on the SPI flash, blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE), and the
 `samples/drivers/spi_flash` test passes on the AT25SF641. Stock firmware erased (it was RDP
 level 1, now RDP 0).
@@ -244,12 +245,20 @@ ZEPHYR_BASE=$PWD/zephyr west twister -T intuitiv/apps/pilot_wire/tests -p native
 
 ### Home Assistant (docker)
 
-Pair once from the host, inside the pairing window. BlueZ keeps the bond:
+Pair once from the host, inside the pairing window. BlueZ keeps the bond. The desktop agent
+rejects the Just Works confirmation (SMP error 0x0c), so let bluetoothctl's own agent handle it:
 
 ```bash
-bluetoothctl --timeout 15 scan on        # note the Intuitiv address
-bluetoothctl pair 43:43:A0:12:1F:AC && bluetoothctl trust 43:43:A0:12:1F:AC
+bluetoothctl
+  agent NoInputNoOutput
+  default-agent
+  scan le                     # wait for Intuitiv, then: scan off
+  pair 43:43:A0:12:1F:AC
+  trust 43:43:A0:12:1F:AC
 ```
+
+A peer that lost its bond can pair again inside the window: the board then replaces the old bond
+(`CONFIG_BT_SMP_ALLOW_UNAUTH_OVERWRITE`).
 
 Install the integration. `/home/eve` is ecryptfs, and the docker daemon sees the directory under
 the mount, not the one in `~/homeassistant`, so copy through the container:
