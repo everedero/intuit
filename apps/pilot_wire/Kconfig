@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config PILOT_WIRE_SIM_ZC
+	bool "Simulate the 50 Hz zero-cross signal"
+	help
+	  Bench test without mains: a 10 ms timer replaces the PC7 zero-cross
+	  interrupt. The output logic runs as on mains, and the enabled
+	  half-wave counts are logged every 10 s.
+
+config PILOT_WIRE_INVERT_POLARITY
+	bool "Swap positive and negative half-waves"
+	help
+	  The mapping of the PC7 level to the mains polarity is not verified
+	  yet. Enable this if Hors-gel and Arret come out swapped.
+
+source "Kconfig.zephyr"

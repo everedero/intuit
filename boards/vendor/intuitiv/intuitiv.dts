@@ -65,6 +65,12 @@
 		pwms = <&pwm2 3 PWM_HZ(32768) PWM_POLARITY_NORMAL>;
 	};
 
+	/* Pilot-wire output: optotriac cathode switch and mains zero-cross */
+	zephyr,user {
+		opto-gpios = <&gpioc 6 GPIO_ACTIVE_HIGH>;
+		zero-cross-gpios = <&gpioc 7 GPIO_ACTIVE_HIGH>;
+	};
+
 	aliases {
 		led0 = &led_red;
 		led1 = &led_green;

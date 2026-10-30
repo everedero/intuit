@@ -207,3 +207,72 @@ pairing again.
 The public address is the Broadcom default `43:43:A0:12:1F:AC`, the same on every unprogrammed
 chip; the sample advertises with a random static address. Give each board its own address
 before deploying several.
+
+## Pilot wire over Bluetooth
+
+`apps/pilot_wire` drives the pilot-wire output from one custom GATT service. No SIG profile
+covers heater modes, so Home Assistant gets a small custom integration
+(`homeassistant/custom_components/intuitiv_pilot_wire`) that shows the board as a climate entity.
+
+| UUID | Characteristic | Format | Access |
+| --- | --- | --- | --- |
+| `6f1e0001-5b2c-4d8a-9c3e-2a7b41c0d5e1` | Service, advertised | | |
+| `6f1e0002-5b2c-4d8a-9c3e-2a7b41c0d5e1` | Mode | uint8: 0 Confort, 1 Éco, 2 Hors-gel, 3 Arrêt, 4 Confort −1, 5 Confort −2 | read; write and notify need an encrypted (bonded) link |
+
+The board also has the Device Information Service. The mode is saved in the settings
+(`pw/mode`), and Confort is the default. Advertising, as `Intuitiv`, restarts after every
+disconnect.
+
+**Pairing:** Just Works, which needs no console. It is accepted only for 2 minutes after boot
+or after a press of the hidden button (PC2). Outside that window, pairing requests are rejected.
+
+**Output:** in the middle of each half-wave (5 ms after the PC7 edge), the optotriac LED is set to
+"is the next half-wave wanted". If there is no zero-cross for 40 ms (bench), only Éco and the
+Confort −1/−2 pulses turn the LED on. The PC7 level → mains polarity mapping is not verified:
+if Hors-gel and Arrêt come out swapped on mains, build with
+`-DCONFIG_PILOT_WIRE_INVERT_POLARITY=y`.
+
+```bash
+# bench, no mains: a 10 ms timer replaces the zero-cross, and the enabled half-waves
+# are logged every 10 s (Éco +500 -500, Hors-gel +0 -500, Arrêt +500 -0)
+ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv intuitiv/apps/pilot_wire -- \
+    -DCONFIG_PILOT_WIRE_SIM_ZC=y -DPython3_EXECUTABLE=$(which python3)
+west flash
+# order logic unit test
+ZEPHYR_BASE=$PWD/zephyr west twister -T intuitiv/apps/pilot_wire/tests -p native_sim
+```
+
+### Home Assistant (docker)
+
+Pair once from the host, inside the pairing window. BlueZ keeps the bond:
+
+```bash
+bluetoothctl --timeout 15 scan on        # note the Intuitiv address
+bluetoothctl pair 43:43:A0:12:1F:AC && bluetoothctl trust 43:43:A0:12:1F:AC
+```
+
+Install the integration. `/home/eve` is ecryptfs, and the docker daemon sees the directory under
+the mount, not the one in `~/homeassistant`, so copy through the container:
+
+```bash
+cd intuitiv/homeassistant/custom_components
+docker exec homeassistant mkdir -p /config/custom_components
+tar cf - intuitiv_pilot_wire | docker exec -i homeassistant tar xf - -C /config/custom_components
+docker exec homeassistant python3 /config/custom_components/intuitiv_pilot_wire/selftest.py
+docker restart homeassistant
+```
+
+HA needs BlueZ over D-Bus to use the adapter. The current container has no `/run/dbus` mount.
+Recreate it with one (same image, network, restart policy and config):
+
+```bash
+docker stop homeassistant && docker rm homeassistant
+docker run -d --name homeassistant --restart unless-stopped --network host \
+    -e TZ=Europe/Paris --cap-add NET_ADMIN --cap-add NET_RAW \
+    -v /home/eve/homeassistant:/config -v /run/dbus:/run/dbus:ro \
+    ghcr.io/home-assistant/home-assistant:2026.1
+```
+
+HA then discovers "Intuitiv" from its service UUID (Settings → Devices & services). The
+climate entity has `heat` / `off` (off = Arrêt), plus the presets Confort, Éco, Hors-gel (`away`),
+Confort −1 and Confort −2. It reconnects when the board advertises again.
