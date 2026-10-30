@@ -3,8 +3,13 @@
  *
  * Pilot-wire heater control over Bluetooth LE: one custom GATT service with
  * a Mode characteristic (enum pw_mode as uint8), read / write / notify.
- * Writes need an encrypted (bonded) link. Just Works pairing is accepted
- * for 2 minutes after boot or after a press of the hidden button (sw1).
+ * Writes need an encrypted (bonded) link.
+ *
+ * Pairing follows GAP: a 3 s press on the middle button (sw0) enters limited
+ * discoverable mode for 180 s, the blue LED blinks and Just Works pairing is
+ * accepted. Outside it, the board is non-discoverable and only bonded peers
+ * may connect (filter accept list). A press on the hidden button (sw1) erases
+ * every bond. With no bond, the board enters pairing mode on its own.
  */
 
 #include <zephyr/kernel.h>
@@ -20,7 +25,9 @@
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
-#define PAIRING_WINDOW_MS (2 * 60 * 1000)
+#define LONG_PRESS K_SECONDS(3)
+#define PAIRING_TIME K_SECONDS(CONFIG_BT_LIM_ADV_TIMEOUT)
+#define BLINK_MS 250
 
 /* 6f1e0001-5b2c-4d8a-9c3e-2a7b41c0d5e1, Mode is ...0002 */
 #define PW_SVC_UUID_VAL BT_UUID_128_ENCODE(0x6f1e0001, 0x5b2c, 0x4d8a, 0x9c3e, 0x2a7b41c0d5e1)
@@ -30,10 +37,13 @@ static const struct bt_uuid_128 pw_svc_uuid = BT_UUID_INIT_128(PW_SVC_UUID_VAL);
 static const struct bt_uuid_128 pw_mode_uuid = BT_UUID_INIT_128(PW_MODE_UUID_VAL);
 
 static uint8_t mode = PW_CONFORT;
-static int64_t pairing_until = PAIRING_WINDOW_MS;
+static atomic_t pairing;
 
-static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw1), gpios);
-static struct gpio_callback button_cb;
+static const struct gpio_dt_spec pair_button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
+static const struct gpio_dt_spec erase_button = GPIO_DT_SPEC_GET(DT_ALIAS(sw1), gpios);
+static const struct gpio_dt_spec led_red = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+static const struct gpio_dt_spec led_blue = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios);
+static struct gpio_callback pair_cb, erase_cb;
 
 static int mode_set(const char *name, size_t len, settings_read_cb read_cb, void *cb_arg)
 {
@@ -95,22 +105,106 @@ static ssize_t write_mode(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 	return len;
 }
 
-static const struct bt_data ad[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+static const struct bt_data ad_pairing[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_LIMITED | BT_LE_AD_NO_BREDR)),
 	BT_DATA_BYTES(BT_DATA_UUID128_ALL, PW_SVC_UUID_VAL),
+};
+
+/* Non-discoverable: no UUID either, so no host offers to set up the board */
+static const struct bt_data ad_normal[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
 };
 
 static const struct bt_data sd[] = {
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
-static void start_adv(void)
+static void accept_bond(const struct bt_bond_info *info, void *user_data)
 {
-	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	if (bt_le_filter_accept_list_add(&info->addr)) {
+		LOG_ERR("accept list full");
+	}
+}
 
-	if (err && err != -EALREADY) {
+static void count_conn(struct bt_conn *conn, void *data)
+{
+	(*(int *)data)++;
+}
+
+static void drop_conn(struct bt_conn *conn, void *data)
+{
+	bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+}
+
+/*
+ * The accept list cannot change while advertising: rebuild it on every start.
+ * The BCM4343A0 stops taking connections after it advertised during a link,
+ * so with a link up, wait: .recycled restarts advertising after it.
+ */
+static void adv_restart(struct k_work *work)
+{
+	int links = 0;
+	int err;
+
+	bt_conn_foreach(BT_CONN_TYPE_LE, count_conn, &links);
+	if (links) {
+		return;
+	}
+	bt_le_adv_stop();
+	bt_le_filter_accept_list_clear();
+	bt_foreach_bond(BT_ID_DEFAULT, accept_bond, NULL);
+
+	if (atomic_get(&pairing)) {
+		err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad_pairing, ARRAY_SIZE(ad_pairing),
+				      sd, ARRAY_SIZE(sd));
+	} else {
+		err = bt_le_adv_start(BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_FILTER_CONN,
+						      BT_GAP_ADV_SLOW_INT_MIN,
+						      BT_GAP_ADV_SLOW_INT_MAX, NULL),
+				      ad_normal, ARRAY_SIZE(ad_normal), NULL, 0);
+	}
+	if (err) {
 		LOG_ERR("advertising failed (%d)", err);
 	}
+}
+static K_WORK_DEFINE(adv_work, adv_restart);
+
+static void start_adv(void)
+{
+	k_work_submit(&adv_work);
+}
+
+static void blink(struct k_timer *t)
+{
+	gpio_pin_toggle_dt(&led_blue);
+}
+static K_TIMER_DEFINE(blink_timer, blink, NULL);
+
+static void pairing_end(struct k_work *work)
+{
+	if (atomic_cas(&pairing, 1, 0)) {
+		k_timer_stop(&blink_timer);
+		gpio_pin_set_dt(&led_blue, 0);
+		LOG_INF("pairing mode off");
+		start_adv();
+	}
+}
+static K_WORK_DELAYABLE_DEFINE(pairing_end_work, pairing_end);
+
+static void pairing_start(void)
+{
+	atomic_set(&pairing, 1);
+	gpio_pin_set_dt(&led_red, 0);
+	k_timer_start(&blink_timer, K_NO_WAIT, K_MSEC(BLINK_MS));
+	k_work_reschedule(&pairing_end_work, PAIRING_TIME);
+	LOG_INF("pairing mode for %d s", CONFIG_BT_LIM_ADV_TIMEOUT);
+	/*
+	 * One link only (see adv_restart): free it for the new host.
+	 * ponytail: a bonded host that reconnects first takes the slot back,
+	 * press again. Fix with a second link if the controller ever allows it.
+	 */
+	bt_conn_foreach(BT_CONN_TYPE_LE, drop_conn, NULL);
+	start_adv();
 }
 
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -138,8 +232,8 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 static enum bt_security_err pairing_accept(struct bt_conn *conn,
 					   const struct bt_conn_pairing_feat *const feat)
 {
-	if (k_uptime_get() > pairing_until) {
-		LOG_WRN("pairing rejected: press the pairing button first");
+	if (!atomic_get(&pairing)) {
+		LOG_WRN("pairing rejected: hold the middle button 3 s first");
 		return BT_SECURITY_ERR_PAIR_NOT_ALLOWED;
 	}
 	return BT_SECURITY_ERR_SUCCESS;
@@ -149,10 +243,80 @@ static struct bt_conn_auth_cb auth_cb = {
 	.pairing_accept = pairing_accept,
 };
 
-static void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+static void pairing_complete(struct bt_conn *conn, bool bonded)
 {
-	pairing_until = k_uptime_get() + PAIRING_WINDOW_MS;
-	LOG_INF("pairing open for %d s", PAIRING_WINDOW_MS / 1000);
+	LOG_INF("paired (bonded %d)", bonded);
+	if (bonded) {
+		k_work_reschedule(&pairing_end_work, K_NO_WAIT);
+	}
+}
+
+static struct bt_conn_auth_info_cb auth_info_cb = {
+	.pairing_complete = pairing_complete,
+};
+
+static void long_press(struct k_work *work)
+{
+	if (gpio_pin_get_dt(&pair_button) == 1) {
+		pairing_start();
+	}
+}
+static K_WORK_DELAYABLE_DEFINE(long_press_work, long_press);
+
+static void pair_changed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	if (gpio_pin_get_dt(&pair_button) == 1) {
+		k_work_reschedule(&long_press_work, LONG_PRESS);
+	} else {
+		k_work_cancel_delayable(&long_press_work);
+	}
+}
+
+/* Red for 1 s, then pairing mode: no bond is left */
+static void erase_done(struct k_work *work)
+{
+	pairing_start();
+}
+static K_WORK_DELAYABLE_DEFINE(erase_done_work, erase_done);
+
+static void erase(struct k_work *work)
+{
+	int err;
+
+	if (gpio_pin_get_dt(&erase_button) != 1) {
+		return;
+	}
+	/* Also disconnects the bonded peers */
+	err = bt_unpair(BT_ID_DEFAULT, BT_ADDR_LE_ANY);
+	LOG_INF("bonds erased (%d)", err);
+	gpio_pin_set_dt(&led_red, 1);
+	k_work_reschedule(&erase_done_work, K_SECONDS(1));
+}
+static K_WORK_DELAYABLE_DEFINE(erase_work, erase);
+
+static void erase_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	k_work_reschedule(&erase_work, K_MSEC(50));
+}
+
+static int button_init(const struct gpio_dt_spec *b, struct gpio_callback *cb,
+		       gpio_callback_handler_t handler, gpio_flags_t edge)
+{
+	int err = gpio_pin_configure_dt(b, GPIO_INPUT);
+
+	if (!err) {
+		err = gpio_pin_interrupt_configure_dt(b, edge);
+	}
+	if (!err) {
+		gpio_init_callback(cb, handler, BIT(b->pin));
+		err = gpio_add_callback_dt(b, cb);
+	}
+	return err;
+}
+
+static void count_bond(const struct bt_bond_info *info, void *user_data)
+{
+	(*(int *)user_data)++;
 }
 
 int main(void)
@@ -175,16 +339,25 @@ int main(void)
 	LOG_INF("mode %u", mode);
 
 	bt_conn_auth_cb_register(&auth_cb);
+	bt_conn_auth_info_cb_register(&auth_info_cb);
 
-	if (gpio_pin_configure_dt(&button, GPIO_INPUT) ||
-	    gpio_pin_interrupt_configure_dt(&button, GPIO_INT_EDGE_TO_ACTIVE)) {
+	gpio_pin_configure_dt(&led_red, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&led_blue, GPIO_OUTPUT_INACTIVE);
+	if (button_init(&pair_button, &pair_cb, pair_changed, GPIO_INT_EDGE_BOTH)) {
 		LOG_ERR("pairing button unavailable");
-	} else {
-		gpio_init_callback(&button_cb, button_pressed, BIT(button.pin));
-		gpio_add_callback_dt(&button, &button_cb);
+	}
+	if (button_init(&erase_button, &erase_cb, erase_pressed, GPIO_INT_EDGE_TO_ACTIVE)) {
+		LOG_ERR("erase button unavailable");
 	}
 
-	start_adv();
-	LOG_INF("advertising as %s", CONFIG_BT_DEVICE_NAME);
+	int bonds = 0;
+
+	bt_foreach_bond(BT_ID_DEFAULT, count_bond, &bonds);
+	LOG_INF("%d bond(s), advertising as %s", bonds, CONFIG_BT_DEVICE_NAME);
+	if (bonds) {
+		start_adv();
+	} else {
+		pairing_start();
+	}
 	return 0;
 }

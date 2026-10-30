@@ -53,8 +53,8 @@ screen /dev/ttyACM0 2000000
 | PA7 (23) | SPI1 MOSI, SPI flash | |
 | PA11 (44) | USB D− (white) | |
 | PA12 (45) | USB D+ (green) | |
-| PB5 (57) | Middle user button | `sw0`, active high (switch to 3V3), no external pull: internal pull-down |
-| PC2 (10) | Hidden button (pairing reset) | `sw1`, active high (switch to 3V3), no external pull: internal pull-down |
+| PB5 (57) | Middle user button | `sw0`, active high (switch to 3V3), no external pull: internal pull-down. Pilot wire: 3 s press = pairing mode |
+| PC2 (10) | Hidden button (pairing reset) | `sw1`, active high (switch to 3V3), no external pull: internal pull-down. Pilot wire: press = erase bonds |
 | PA15, PB3, PB4 (50, 55, 56) | Hardware version resistors (assumed) | 6 footprints, 3 fitted, exact pins to trace. With internal pulls, PA15 and PB3 read low, PB4 high |
 | PB6 (58) | Bottom test pad | USART1_TX: console |
 | PA13 (46) | SWDIO | |
@@ -225,8 +225,22 @@ The board also has the Device Information Service. The mode is saved in the sett
 (`pw/mode`), and Confort is the default. Advertising, as `Intuitiv`, restarts after every
 disconnect.
 
-**Pairing:** Just Works, which needs no console. It is accepted only for 2 minutes after boot
-or after a press of the hidden button (PC2). Outside that window, pairing requests are rejected.
+**Pairing** follows the GAP modes. Just Works, which needs no console.
+- **Pairing mode:** hold the middle button (PB5) for 3 s. The blue LED blinks, and the board
+  advertises as limited discoverable, with the service UUID and its name, for 180 s (GAP's
+  T_GAP(lim_adv_timeout)). The mode ends at the first bond or at the timeout. With no bond at
+  all, for example on a new board, it starts at boot.
+- **Outside pairing mode:** the board is not discoverable (no discoverable flag, no UUID), and
+  only bonded peers can connect (filter accept list). Pairing requests are rejected. BlueZ
+  still reports a non-discoverable device that it already knows, so a bonded host reconnects.
+- **Erase:** press the hidden button (PC2). Every bond is deleted and the peers are
+  disconnected. The red LED lights for 1 s, then pairing mode starts. On the host, run
+  `bluetoothctl remove <addr>` before pairing again.
+
+One connection at a time: the BCM4343A0 stops accepting connections once it has advertised
+during a link (reproduced on the bench), so the board never does. Entering pairing mode
+disconnects the current peer to free the slot. If a bonded host (HA) reconnects first, hold
+the button again.
 
 **Output:** in the middle of each half-wave (5 ms after the PC7 edge), the optotriac LED is set to
 "is the next half-wave wanted". If there is no zero-cross for 40 ms (bench), only Éco and the
@@ -246,7 +260,7 @@ ZEPHYR_BASE=$PWD/zephyr west twister -T intuitiv/apps/pilot_wire/tests -p native
 
 ### Home Assistant (docker)
 
-Pair once from the host, inside the pairing window. BlueZ keeps the bond. The desktop agent
+Pair once from the host, in pairing mode. BlueZ keeps the bond. The desktop agent
 rejects the Just Works confirmation (SMP error 0x0c), so let bluetoothctl's own agent handle it:
 
 ```bash
@@ -258,7 +272,7 @@ bluetoothctl
   trust 43:43:A0:12:1F:AC
 ```
 
-A peer that lost its bond can pair again inside the window: the board then replaces the old bond
+A peer that lost its bond can pair again in pairing mode: the board then replaces the old bond
 (`CONFIG_BT_SMP_ALLOW_UNAUTH_OVERWRITE`).
 
 Install the integration. `/home/eve` is ecryptfs, and the docker daemon sees the directory under
