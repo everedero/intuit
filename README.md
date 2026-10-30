@@ -3,7 +3,8 @@
 Zephyr (v4.5.0) support for the Intuitiv pilot-wire heater gateway, a
 board built around an STM32F412RG (LQFP64).
 
-Project status: Bluetooth LE works (the PC connects to the peripheral sample), blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE), and the
+Project status: Bluetooth LE works (the PC pairs with the peripheral sample, bonds survive a
+reboot), settings persist on the SPI flash, blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE), and the
 `samples/drivers/spi_flash` test passes on the AT25SF641. Stock firmware erased (it was RDP
 level 1, now RDP 0).
 
@@ -23,7 +24,7 @@ screen /dev/ttyACM0 2000000
 | STM32F412RG (LQFP64) | Main MCU |
 | AP6212 (BCM4343A0, not the AP6212A) | Wi-Fi + Bluetooth 4.1 SiP |
 | ATSAMR21E18A | 2.4 GHz 802.15.4 radio MCU |
-| AT25SF641 | 64 Mbit SPI NOR flash |
+| AT25SF641 | 64 Mbit SPI NOR flash, settings in its first 64 KiB |
 | VIPER013LS | Non-isolated offline converter (half-wave rectified mains) |
 | NCP1117 | 3.3 V LDO |
 | MOC3063M | Zero-cross optotriac (triac driver) |
@@ -176,6 +177,13 @@ ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv zephyr/samples/basic/blinky \
 west flash   # openocd over SWD (default), or --runner stm32cubeprogrammer
 ```
 
+## Settings
+
+`storage_partition` (the `zephyr,settings-partition`) is the first 64 KiB of the AT25SF641:
+16 NVS sectors of 4 KiB. Any app with `CONFIG_SETTINGS=y` gets the NVS backend by default
+(`Kconfig.defconfig`). Test: `zephyr/samples/subsys/settings`, flashed twice, starts the second
+run from the values the first one saved.
+
 ## Bluetooth
 
 The AP6212 Bluetooth core is a BCM4343A0 (LMP subversion 0x2122), driven by the Zephyr AIROC
@@ -191,6 +199,10 @@ ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv zephyr/samples/bluetooth/perip
 west flash
 bluetoothctl --timeout 15 scan on   # "Zephyr Peripheral Sample Long"
 ```
+
+Pairing shows a passkey on the console. Bonds, the identity and the IRK live in the settings
+partition, so the PC reconnects to the bonded `43:43:A0:12:1F:AC` after a reboot without
+pairing again.
 
 The public address is the Broadcom default `43:43:A0:12:1F:AC`, the same on every unprogrammed
 chip; the sample advertises with a random static address. Give each board its own address

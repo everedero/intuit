@@ -18,6 +18,7 @@
 		zephyr,console = &usart1;
 		zephyr,shell-uart = &usart1;
 		zephyr,bt-hci = &bt_hci_uart;
+		zephyr,settings-partition = &storage_partition;
 	};
 
 	/* RGB LED, active low. Colour of each pin not identified yet. */
@@ -166,6 +167,18 @@ zephyr_udc0: &usbotg_fs {
 		spi-max-frequency = <DT_FREQ_M(8)>;
 		size = <DT_SIZE_M(64)>; /* bits */
 		jedec-id = [1f 32 17];
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/* Settings (Bluetooth bonds): 16 erase sectors of 4 KiB */
+			storage_partition: partition@0 {
+				label = "storage";
+				reg = <0x0 DT_SIZE_K(64)>;
+			};
+		};
 	};
 };
 

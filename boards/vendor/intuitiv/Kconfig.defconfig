@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_INTUITIV
+
+# Settings backend: NVS on the SPI NOR storage_partition
+config FLASH
+	default y
+
+config FLASH_MAP
+	default y
+
+config NVS
+	default y if SETTINGS
+
+# NVS sectors must stay below 64 KiB: expose the 4 KiB erase sectors
+config SPI_NOR_FLASH_LAYOUT_PAGE_SIZE
+	default 4096
+
+# The whole 64 KiB storage_partition
+config SETTINGS_NVS_SECTOR_COUNT
+	default 16
+
+endif # BOARD_INTUITIV
