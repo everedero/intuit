@@ -2,7 +2,7 @@
 
 config INTUITIV_WIFI_FW
 	string "Wi-Fi firmware image, relative to the app"
-	default "fw/brcmfmac43430a0-sdio.bin"
+	default "fw/43430a0-7.45.96.88.bin"
 
 config INTUITIV_WIFI_NVRAM
 	string "Wi-Fi NVRAM text, relative to the app"

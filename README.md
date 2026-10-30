@@ -295,12 +295,30 @@ the SDMMC IDMA, which the F4 lacks, so this module has its own `st,stm32f4-sdio`
 (12 MHz). The Zephyr AIROC (WHD) driver sits on top. WL_REG_ON is PB12.
 
 The firmware and NVRAM are not committed. WHD's hal_infineon blobs are for 43438A1, which this
-chip is not:
+chip is not. WHD needs a firmware that runs the WPA handshake itself (the `idsup` feature), and
+the public A0 images lack it: the Linux FMAC build (7.13.53.9) and the Android DHD build
+(`fw_bcm43438a0.bin`, 7.10.226.49) leave it to a host wpa_supplicant, so a WPA2 join fails with
+`whd_wifi_set_passphrase ... checkres = 33556434` (`WLC_SET_WSEC_PMK` → bad argument). They only
+join open networks.
+
+The board's own SPI flash holds a WICED A0 firmware with `idsup-idauth`, 7.45.96.88, so get it
+from there. `apps/spi_dump` streams the whole flash over the console (frames of 4 KiB blocks
+with a CRC32). `dump.py` collects them into `out/spi_flash.bin`, which is untracked and must
+stay out of git. The firmware sits in a resource table at 0x130000, with a second copy at
+0x4a0000: a u32 total length, then (offset, size) u32 pairs counted from byte 4 for the
+firmware, an NVRAM and an encrypted blob.
 
 ```bash
 # once per checkout: WHD patch (hal_infineon), see zephyr/patches.yml
 west patch -sm intuitiv apply
-cp /usr/lib/firmware/brcm/brcmfmac43430a0-sdio.bin intuitiv/apps/wifi/fw/
+ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv intuitiv/apps/spi_dump -- \
+    -DPython3_EXECUTABLE=$(which python3)
+west flash
+cd intuitiv/apps/spi_dump && python dump.py /dev/ttyACM0 out/spi_flash.bin &  # ~70 s, needs pyserial
+# start the app (BOOT0 is strapped high, see Flashing below), then once dump.py is done:
+dd if=out/spi_flash.bin of=../wifi/fw/43430a0-7.45.96.88.bin \
+    iflag=skip_bytes,count_bytes skip=$((0x13001c)) count=434400
+cd -
 curl -L -o intuitiv/apps/wifi/fw/nvram_ap6212.txt \
     https://raw.githubusercontent.com/armbian/firmware/master/ap6212/nvram.txt
 ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv intuitiv/apps/wifi -- \
@@ -313,14 +331,10 @@ The app scans and logs the access points. If an SSID is set, it then connects an
 WHD allocates with `k_malloc`, so this app has a 48 KiB heap (`CONFIG_HEAP_MEM_POOL_SIZE`). That
 heap is for the vendor driver only.
 
-On the bench, the firmware loads (7.13.53.9, built-in CLM), the MAC is read from the chip and the
-scan lists the nearby networks. **Open networks only for now.** WHD expects the firmware to run
-the WPA handshake itself (the `idsup` feature), and neither A0 image has it: the Linux FMAC
-build (7.13.53.9) and the Android DHD build (`fw_bcm43438a0.bin`, 7.10.226.49) leave it to a
-host wpa_supplicant. A WPA2 join then fails with `whd_wifi_set_passphrase ... checkres =
-33556434` (`WLC_SET_WSEC_PMK` → bad argument). A WICED-style A0 image (feature string with
-`idsup-idauth`) is needed. The stock firmware ran a soft-AP, so it may have kept one on the
-SPI flash.
+On the bench, the 7.45.96.88 firmware loads with its built-in CLM (so the CLM blob stays
+empty) and the MAC is read from the chip. The scan lists the nearby networks, and a WPA2-PSK
+join plus DHCP work. Set `CONFIG_INTUITIV_WIFI_FW="fw/brcmfmac43430a0-sdio.bin"` to use the Linux
+image instead (open networks only).
 
 The patch in `zephyr/patches/hal_infineon` makes WHD accept firmware without the `mfp` iovar
 (the 7.13 image has none). Without it, the join stops earlier in `whd_wifi_prepare_join`.
