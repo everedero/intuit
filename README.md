@@ -202,6 +202,10 @@ board, and results go to `../ci-out`. Checkpatch, clang-format and ruff use Zeph
 (`.checkpatch.conf`, `.clang-format`, `.ruff.toml`). The excluded checks, and why, are listed in
 the script. Without the untracked HCD, the Bluetooth scenario (tag `hcd`) is skipped.
 
+**Release:** pushing a `v*` tag (`git tag v1.0 && git push origin v1.0`) runs
+`.github/workflows/release.yml`. It fetches the HCD, builds `apps/pilot_wire` for `intuitiv`, and
+attaches `pilot_wire-<tag>.bin` and `.elf` to a GitHub release.
+
 `native_sim/native/intuitiv` (`boards/native/intuitiv`) extends `native_sim` with the board's
 devicetree labels and aliases: LEDs `led0`–`led2` (active low) and buttons `sw0`/`sw1` on the
 emulated GPIO, the pilot-wire GPIOs, and `spi_flash` as an 8 MiB flash simulator holding the
