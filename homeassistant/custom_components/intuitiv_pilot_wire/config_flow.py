@@ -43,14 +43,11 @@ class IntuitivConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="confirm", description_placeholders={"name": self._title()}
         )
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         found = {
             info.address: info
             for info in async_discovered_service_info(self.hass)
-            if SERVICE_UUID in info.service_uuids
-            and info.address not in self._async_current_ids()
+            if SERVICE_UUID in info.service_uuids and info.address not in self._async_current_ids()
         }
         if user_input is not None:
             self._discovery = found[user_input[CONF_ADDRESS]]

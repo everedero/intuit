@@ -14,7 +14,7 @@
 
 #define FLASH_NODE DT_NODELABEL(spi_flash)
 #define FLASH_SIZE (DT_PROP(FLASH_NODE, size) / 8)
-#define BLK_SIZE 4096
+#define BLK_SIZE   4096
 
 static const struct device *const flash = DEVICE_DT_GET(FLASH_NODE);
 static const struct device *const uart = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
@@ -39,7 +39,7 @@ int main(void)
 	for (;;) {
 		for (uint32_t addr = 0; addr < FLASH_SIZE; addr += BLK_SIZE) {
 			if (flash_read(flash, addr, blk, BLK_SIZE)) {
-				continue;	/* host sees the block missing */
+				continue; /* host sees the block missing */
 			}
 			sys_put_le32(addr, &hdr[3]);
 			sys_put_le32(crc32_ieee_update(crc32_ieee(&hdr[3], 4), blk, BLK_SIZE), crc);

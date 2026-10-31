@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """Collect the spi_dump stream into a flash image: dump.py [port] [out.bin]"""
+
 import struct
 import sys
 import zlib
@@ -19,21 +20,29 @@ def parse(buf, blocks):
             return buf[-2:]
         if len(buf) - i < FRAME:
             return buf[i:]
-        f = buf[i + 3:i + FRAME]
+        f = buf[i + 3 : i + FRAME]
         addr, data, (crc,) = f[:4], f[4:-4], struct.unpack("<I", f[-4:])
         a = struct.unpack("<I", addr)[0]
         if zlib.crc32(addr + data) == crc and a < SIZE and a % BLK == 0:
             blocks[a] = data
-            buf = buf[i + FRAME:]
+            buf = buf[i + FRAME :]
         else:
-            buf = buf[i + 1:]       # false magic or damaged frame: resync
+            buf = buf[i + 1 :]  # false magic or damaged frame: resync
 
 
 def selftest():
     blocks = {}
-    good = lambda a, d: b"BLK" + struct.pack("<I", a) + d + struct.pack("<I", zlib.crc32(struct.pack("<I", a) + d))
-    bad = bytearray(good(BLK, b"\x11" * BLK)); bad[100] ^= 1
-    tail = parse(b"junkBLK" + good(0, b"BLK" * 1365 + b"x") + bytes(bad) + good(2 * BLK, b"\x22" * BLK)[:50], blocks)
+
+    def good(a, d):
+        addr = struct.pack("<I", a)
+        return b"BLK" + addr + d + struct.pack("<I", zlib.crc32(addr + d))
+
+    bad = bytearray(good(BLK, b"\x11" * BLK))
+    bad[100] ^= 1
+    tail = parse(
+        b"junkBLK" + good(0, b"BLK" * 1365 + b"x") + bytes(bad) + good(2 * BLK, b"\x22" * BLK)[:50],
+        blocks,
+    )
     assert sorted(blocks) == [0] and blocks[0][:3] == b"BLK" and tail.startswith(b"BLK")
 
 

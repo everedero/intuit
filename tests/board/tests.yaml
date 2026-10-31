@@ -11,6 +11,7 @@ tests:
       - native_sim/native/intuitiv
   # Bluetooth controller bring-up: needs the AP6212 (and its untracked HCD)
   board.bluetooth:
+    tags: hcd
     platform_allow:
       - intuitiv
     extra_args:

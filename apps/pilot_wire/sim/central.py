@@ -4,6 +4,7 @@
 
 Pairs in pairing mode (limited discoverable), writes the mode, then
 reconnects with the bond through the non-discoverable advertising."""
+
 import asyncio
 import sys
 

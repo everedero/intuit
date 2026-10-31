@@ -15,15 +15,15 @@
 /* native_sim: the flash simulator device is the parent controller */
 #if DT_NODE_HAS_COMPAT(FLASH_NODE, soc_nv_flash)
 #define FLASH_DEV_NODE DT_PARENT(FLASH_NODE)
-#define FLASH_SIZE DT_REG_SIZE(FLASH_NODE)
+#define FLASH_SIZE     DT_REG_SIZE(FLASH_NODE)
 #else
 #define FLASH_DEV_NODE FLASH_NODE
-#define FLASH_SIZE (DT_PROP(FLASH_NODE, size) / 8)
+#define FLASH_SIZE     (DT_PROP(FLASH_NODE, size) / 8)
 #endif
 
 /* Erased in the factory dump: data ends at 0x53ffff, resumes at 0x7e0000 */
 #define TEST_OFFSET 0x700000
-#define SECTOR 4096
+#define SECTOR      4096
 
 static const struct device *const flash = DEVICE_DT_GET(FLASH_DEV_NODE);
 static uint8_t buf[SECTOR];

@@ -14,10 +14,10 @@
 
 LOG_MODULE_REGISTER(pilot_wire, LOG_LEVEL_INF);
 
-#define ZC_DELAY_MS 5       /* mid half-wave at 50 Hz */
-#define ZC_LOST_MS 40       /* two full mains periods */
-#define TICK_MS 100
-#define STATS_TICKS 100     /* 10 s */
+#define ZC_DELAY_MS 5  /* mid half-wave at 50 Hz */
+#define ZC_LOST_MS  40 /* two full mains periods */
+#define TICK_MS     100
+#define STATS_TICKS 100 /* 10 s */
 
 static const struct gpio_dt_spec opto = GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), opto_gpios);
 

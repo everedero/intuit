@@ -25,12 +25,12 @@
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
-#define LONG_PRESS K_SECONDS(3)
+#define LONG_PRESS   K_SECONDS(3)
 #define PAIRING_TIME K_SECONDS(CONFIG_BT_LIM_ADV_TIMEOUT)
-#define BLINK_MS 250
+#define BLINK_MS     250
 
 /* 6f1e0001-5b2c-4d8a-9c3e-2a7b41c0d5e1, Mode is ...0002 */
-#define PW_SVC_UUID_VAL BT_UUID_128_ENCODE(0x6f1e0001, 0x5b2c, 0x4d8a, 0x9c3e, 0x2a7b41c0d5e1)
+#define PW_SVC_UUID_VAL  BT_UUID_128_ENCODE(0x6f1e0001, 0x5b2c, 0x4d8a, 0x9c3e, 0x2a7b41c0d5e1)
 #define PW_MODE_UUID_VAL BT_UUID_128_ENCODE(0x6f1e0002, 0x5b2c, 0x4d8a, 0x9c3e, 0x2a7b41c0d5e1)
 
 static const struct bt_uuid_128 pw_svc_uuid = BT_UUID_INIT_128(PW_SVC_UUID_VAL);
@@ -64,20 +64,22 @@ static ssize_t read_mode(struct bt_conn *conn, const struct bt_gatt_attr *attr, 
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, &mode, sizeof(mode));
 }
 
-static ssize_t write_mode(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			  const void *buf, uint16_t len, uint16_t offset, uint8_t flags);
+static ssize_t write_mode(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf,
+			  uint16_t len, uint16_t offset, uint8_t flags);
 
+/* clang-format off */
 BT_GATT_SERVICE_DEFINE(pw_svc,
 	BT_GATT_PRIMARY_SERVICE(&pw_svc_uuid),
 	BT_GATT_CHARACTERISTIC(&pw_mode_uuid.uuid,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
-			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE_ENCRYPT, read_mode, write_mode,
-			       NULL),
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE_ENCRYPT,
+			       read_mode, write_mode, NULL),
 	BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE_ENCRYPT),
 );
+/* clang-format on */
 
-static ssize_t write_mode(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			  const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
+static ssize_t write_mode(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf,
+			  uint16_t len, uint16_t offset, uint8_t flags)
 {
 	uint8_t val;
 	int err;
@@ -155,13 +157,13 @@ static void adv_restart(struct k_work *work)
 	bt_foreach_bond(BT_ID_DEFAULT, accept_bond, NULL);
 
 	if (atomic_get(&pairing)) {
-		err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad_pairing, ARRAY_SIZE(ad_pairing),
-				      sd, ARRAY_SIZE(sd));
+		err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad_pairing, ARRAY_SIZE(ad_pairing), sd,
+				      ARRAY_SIZE(sd));
 	} else {
-		err = bt_le_adv_start(BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_FILTER_CONN,
-						      BT_GAP_ADV_SLOW_INT_MIN,
-						      BT_GAP_ADV_SLOW_INT_MAX, NULL),
-				      ad_normal, ARRAY_SIZE(ad_normal), NULL, 0);
+		err = bt_le_adv_start(
+			BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_FILTER_CONN,
+					BT_GAP_ADV_SLOW_INT_MIN, BT_GAP_ADV_SLOW_INT_MAX, NULL),
+			ad_normal, ARRAY_SIZE(ad_normal), NULL, 0);
 	}
 	if (err) {
 		LOG_ERR("advertising failed (%d)", err);

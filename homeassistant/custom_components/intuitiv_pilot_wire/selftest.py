@@ -8,12 +8,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from homeassistant.components.climate import HVACMode  # noqa: E402
-
 import custom_components.intuitiv_pilot_wire as pkg  # noqa: E402
 from custom_components.intuitiv_pilot_wire import config_flow  # noqa: E402, F401
 from custom_components.intuitiv_pilot_wire.climate import PilotWireClimate  # noqa: E402
 from custom_components.intuitiv_pilot_wire.const import MODE_UUID  # noqa: E402
+
+from homeassistant.components.climate import HVACMode  # noqa: E402
 
 
 class FakeClient:

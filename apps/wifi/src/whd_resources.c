@@ -12,9 +12,9 @@ const unsigned char wifi_firmware_image_data[] __aligned(4) = {
 #include "wifi_fw.inc"
 };
 
-const resource_hnd_t wifi_firmware_image = {
-	RESOURCE_IN_MEMORY, sizeof(wifi_firmware_image_data),
-	{.mem = {(const char *)wifi_firmware_image_data}}};
+const resource_hnd_t wifi_firmware_image = {RESOURCE_IN_MEMORY,
+					    sizeof(wifi_firmware_image_data),
+					    {.mem = {(const char *)wifi_firmware_image_data}}};
 
 const unsigned char wifi_firmware_clm_blob_data[1];
 

@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: Apache-2.0
+# Zephyr style, from the sibling zephyr checkout (west workspace)
+extend = "../zephyr/.ruff.toml"

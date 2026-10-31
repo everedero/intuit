@@ -195,6 +195,13 @@ ZEPHYR_BASE=$PWD/zephyr west twister -T intuitiv/tests/board -p intuitiv --devic
 ZEPHYR_BASE=$PWD/zephyr west twister -T intuitiv/tests/board -p native_sim/native/intuitiv
 ```
 
+**CI:** `scripts/ci.sh [commit range]` (default `HEAD~1..HEAD`) runs the Zephyr compliance
+checks that apply here, then twister on `intuitiv` (build only) and `native_sim/native/intuitiv`
+(built and run). It needs the west workspace and its Python env. `HW=1` also runs the tests on the
+board, and results go to `../ci-out`. Checkpatch, clang-format and ruff use Zephyr's settings
+(`.checkpatch.conf`, `.clang-format`, `.ruff.toml`). The excluded checks, and why, are listed in
+the script. Without the untracked HCD, the Bluetooth scenario (tag `hcd`) is skipped.
+
 `native_sim/native/intuitiv` (`boards/native/intuitiv`) extends `native_sim` with the board's
 devicetree labels and aliases: LEDs `led0`–`led2` (active low) and buttons `sw0`/`sw1` on the
 emulated GPIO, the pilot-wire GPIOs, and `spi_flash` as an 8 MiB flash simulator holding the
