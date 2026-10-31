@@ -179,6 +179,29 @@ ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv zephyr/samples/basic/blinky \
 west flash   # openocd over SWD (default), or --runner stm32cubeprogrammer
 ```
 
+## Tests
+
+`tests/board` checks the board devices. The `board.devices` scenario covers the RGB LED (set
+and read back each colour), the buttons (released, interrupt set up) and the SPI flash (size,
+JEDEC id, erase/write/read of the sector at 0x700000, which the factory image leaves erased,
+then erased again). `board.bluetooth` adds the AP6212: patchram download, public identity,
+advertising start and stop (needs the untracked HCD, see Bluetooth).
+
+```bash
+# on the board (bench 3.3 V, never on mains). west flash starts the app after the flash
+ZEPHYR_BASE=$PWD/zephyr west twister -T intuitiv/tests/board -p intuitiv --device-testing \
+    --device-serial /dev/ttyACM0 --device-serial-baud 2000000 --retry-failed 2 -j 1
+# without the board
+ZEPHYR_BASE=$PWD/zephyr west twister -T intuitiv/tests/board -p native_sim/native/intuitiv
+```
+
+`native_sim/native/intuitiv` (`boards/native/intuitiv`) extends `native_sim` with the board's
+devicetree labels and aliases: LEDs `led0`–`led2` (active low) and buttons `sw0`/`sw1` on the
+emulated GPIO, the pilot-wire GPIOs, and `spi_flash` as an 8 MiB flash simulator holding the
+settings partition. There the button test presses the buttons through the GPIO emulator, and
+the JEDEC test is skipped. Apps with board-only options keep them in `boards/intuitiv.conf`
+(AIROC in `apps/pilot_wire`).
+
 ## Settings
 
 `storage_partition` (the `zephyr,settings-partition`) is the first 64 KiB of the AT25SF641:
@@ -256,6 +279,19 @@ ZEPHYR_BASE=$PWD/zephyr west build -p -b intuitiv intuitiv/apps/pilot_wire -- \
 west flash
 # order logic unit test
 ZEPHYR_BASE=$PWD/zephyr west twister -T intuitiv/apps/pilot_wire/tests -p native_sim
+```
+
+**On native_sim**, without the board: `native_sim/native/intuitiv` (below) runs the whole app,
+with a [bumble](https://github.com/google/bumble) virtual controller in place of the AP6212.
+`sim/run.sh` starts two linked bumble controllers, the app on one (`--bt-dev=127.0.0.1:9000`),
+and `sim/central.py` on the other. The central pairs in pairing mode (AD flags 0x05), writes a
+mode, then reconnects with the bond through the non-discoverable advertising (flags 0x04).
+
+```bash
+python3 -m venv ~/bumble && ~/bumble/bin/pip install bumble
+ZEPHYR_BASE=$PWD/zephyr west build -p -b native_sim/native/intuitiv intuitiv/apps/pilot_wire -- \
+    -DCONFIG_PILOT_WIRE_SIM_ZC=y -DPython3_EXECUTABLE=$(which python3)
+BUMBLE_PY=~/bumble/bin/python intuitiv/apps/pilot_wire/sim/run.sh build/zephyr/zephyr.exe   # PASS
 ```
 
 ### Home Assistant (docker)

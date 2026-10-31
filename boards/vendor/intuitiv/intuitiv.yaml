@@ -1,0 +1,15 @@
+identifier: intuitiv
+name: Intuitiv pilot-wire gateway
+type: mcu
+arch: arm
+ram: 256
+flash: 1024
+toolchain:
+  - zephyr
+supported:
+  - gpio
+  - spi
+  - flash
+  - ble
+  - wifi
+vendor: vendor

@@ -1,0 +1,17 @@
+common:
+  tags: board
+  harness: ztest
+tests:
+  # LEDs, buttons, SPI flash: the board, or native_sim with the same devicetree
+  board.devices:
+    platform_allow:
+      - intuitiv
+      - native_sim/native/intuitiv
+    integration_platforms:
+      - native_sim/native/intuitiv
+  # Bluetooth controller bring-up: needs the AP6212 (and its untracked HCD)
+  board.bluetooth:
+    platform_allow:
+      - intuitiv
+    extra_args:
+      - EXTRA_CONF_FILE=bt.conf

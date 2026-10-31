@@ -1,0 +1,94 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * native_sim with the intuitiv board's devices under the same labels and
+ * aliases: RGB LED (active low), two buttons (active high), pilot-wire
+ * GPIOs, and the 8 MiB SPI NOR as a flash simulator.
+ */
+
+#include <../boards/native/native_sim/native_sim.dts>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+	model = "Intuitiv pilot-wire gateway (native_sim)";
+
+	chosen {
+		zephyr,settings-partition = &intuitiv_storage;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_red: led_red {
+			gpios = <&gpio0 13 GPIO_ACTIVE_LOW>;
+			label = "RGB LED red";
+		};
+
+		led_green: led_green {
+			gpios = <&gpio0 14 GPIO_ACTIVE_LOW>;
+			label = "RGB LED green";
+		};
+
+		led_blue: led_blue {
+			gpios = <&gpio0 15 GPIO_ACTIVE_LOW>;
+			label = "RGB LED blue";
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		button_middle: button_middle {
+			gpios = <&gpio0 5 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+			label = "Middle button";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+
+		button_pairing: button_pairing {
+			gpios = <&gpio0 2 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+			label = "Hidden pairing reset button";
+			zephyr,code = <INPUT_KEY_1>;
+		};
+	};
+
+	zephyr,user {
+		opto-gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
+		zero-cross-gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;
+	};
+
+	aliases {
+		led0 = &led_red;
+		led1 = &led_green;
+		led2 = &led_blue;
+		sw0 = &button_middle;
+		sw1 = &button_pairing;
+	};
+
+	/* AT25SF641 stand-in: 8 MiB, 4 KiB erase sectors */
+	spi_flash_ctrl: flash-controller@8000000 {
+		compatible = "zephyr,sim-flash";
+		reg = <0x08000000 DT_SIZE_M(8)>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		erase-value = <0xff>;
+
+		spi_flash: flash@0 {
+			compatible = "soc-nv-flash";
+			reg = <0x0 DT_SIZE_M(8)>;
+			erase-block-size = <4096>;
+			write-block-size = <1>;
+
+			partitions {
+				compatible = "fixed-partitions";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				/* Same 64 KiB settings area as the board */
+				intuitiv_storage: partition@0 {
+					label = "intuitiv-storage";
+					reg = <0x0 DT_SIZE_K(64)>;
+				};
+			};
+		};
+	};
+};
