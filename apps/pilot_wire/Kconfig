@@ -10,7 +10,8 @@ config PILOT_WIRE_SIM_ZC
 config PILOT_WIRE_INVERT_POLARITY
 	bool "Swap positive and negative half-waves"
 	help
-	  The mapping of the PC7 level to the mains polarity is not verified
-	  yet. Enable this if Hors-gel and Arret come out swapped.
+	  Verified on mains: PC7 high is the negative half-wave on P2, which
+	  is the default. Enable this only if Hors-gel and Arret come out
+	  swapped on another installation.
 
 source "Kconfig.zephyr"

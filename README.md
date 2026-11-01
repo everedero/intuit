@@ -321,9 +321,9 @@ the button again.
 
 **Output:** in the middle of each half-wave (5 ms after the PC7 edge), the optotriac LED is set to
 "is the next half-wave wanted". If there is no zero-cross for 40 ms (bench), only Éco and the
-Confort −1/−2 pulses turn the LED on. The PC7 level → mains polarity mapping is not verified:
-if Hors-gel and Arrêt come out swapped on mains, build with
-`-DCONFIG_PILOT_WIRE_INVERT_POLARITY=y`.
+Confort −1/−2 pulses turn the LED on. PC7 high is the negative half-wave on P2 (verified on
+mains: Arrêt stops the heater). If Hors-gel and Arrêt come out swapped on another installation,
+build with `-DCONFIG_PILOT_WIRE_INVERT_POLARITY=y`.
 
 ```bash
 # bench, no mains: a 10 ms timer replaces the zero-cross, and the enabled half-waves

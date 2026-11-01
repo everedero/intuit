@@ -21,15 +21,16 @@ LOG_MODULE_REGISTER(pilot_wire, LOG_LEVEL_INF);
 
 static const struct gpio_dt_spec opto = GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), opto_gpios);
 
+/* Uptimes in 32-bit ms, so the ISRs read them whole */
 static atomic_t cur_mode;
-static int64_t mode_start;
-static int64_t last_zc;
+static atomic_t mode_start;
+static atomic_t last_zc;
 static enum pw_half cur_half;
 static atomic_t count[2];
 
 static uint32_t cycle_ms(void)
 {
-	return (uint32_t)((k_uptime_get() - mode_start) % PW_CYCLE_MS);
+	return (k_uptime_get_32() - (uint32_t)atomic_get(&mode_start)) % PW_CYCLE_MS;
 }
 
 /* Mid half-wave: arm (or not) the optotriac for the next one */
@@ -51,7 +52,7 @@ static void zero_cross(enum pw_half starting)
 		starting = starting == PW_HALF_POS ? PW_HALF_NEG : PW_HALF_POS;
 	}
 	cur_half = starting;
-	last_zc = k_uptime_get();
+	atomic_set(&last_zc, k_uptime_get_32());
 	k_timer_start(&mid_timer, K_MSEC(ZC_DELAY_MS), K_NO_WAIT);
 }
 
@@ -70,16 +71,32 @@ static struct gpio_callback zc_cb;
 
 static void zc_isr(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-	zero_cross(gpio_pin_get_dt(&zc) ? PW_HALF_POS : PW_HALF_NEG);
+	/* Verified on mains: PC7 high is the negative half-wave on P2 */
+	zero_cross(gpio_pin_get_dt(&zc) ? PW_HALF_NEG : PW_HALF_POS);
 }
 #endif
+
+static bool zc_present(void)
+{
+	return k_uptime_get_32() - (uint32_t)atomic_get(&last_zc) <= ZC_LOST_MS;
+}
 
 /* No mains (bench): only full-wave orders can be expressed, as LED on */
 static void tick(struct k_work *work)
 {
 	static int ticks;
+	static int was_present = -1;
+	bool present = zc_present();
 
-	if (k_uptime_get() - last_zc > ZC_LOST_MS) {
+	if (present != was_present) {
+		was_present = present;
+		if (present) {
+			LOG_INF("zero-cross present");
+		} else {
+			LOG_WRN("no zero-cross: half-wave orders fall back to Confort");
+		}
+	}
+	if (!present) {
 		enum pw_mode mode = atomic_get(&cur_mode);
 		uint32_t t = cycle_ms();
 
@@ -98,7 +115,7 @@ static K_WORK_DELAYABLE_DEFINE(tick_work, tick);
 
 void pilot_wire_set(enum pw_mode mode)
 {
-	mode_start = k_uptime_get();
+	atomic_set(&mode_start, k_uptime_get_32());
 	atomic_set(&cur_mode, mode);
 }
 
@@ -107,7 +124,7 @@ int pilot_wire_init(enum pw_mode mode)
 	int err;
 
 	pilot_wire_set(mode);
-	last_zc = INT64_MIN / 2;
+	atomic_set(&last_zc, k_uptime_get_32() - 1000U);
 
 	err = gpio_pin_configure_dt(&opto, GPIO_OUTPUT_INACTIVE);
 	if (err) {
@@ -133,6 +150,7 @@ int pilot_wire_init(enum pw_mode mode)
 	}
 #endif
 
-	k_work_schedule(&tick_work, K_NO_WAIT);
+	/* Give the zero-cross time to show up before calling it lost */
+	k_work_schedule(&tick_work, K_MSEC(2 * ZC_LOST_MS));
 	return 0;
 }
