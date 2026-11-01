@@ -1,22 +1,30 @@
 # Intuitiv
 
-Zephyr (v4.5.0) support for the Intuitiv pilot-wire heater gateway, a
+Zephyr support for a pilot-wire heater gateway, a
 board built around an STM32F412RG (LQFP64).
 
-Project status: pilot wire over Bluetooth works on the bench (simulated zero-cross, no mains
-yet), Bluetooth LE works (the PC pairs with the peripheral sample, bonds survive a
-reboot), settings persist on the SPI flash, blinky runs (console at 2 Mbaud on PB6 confirms the 26 MHz HSE), and the
-`samples/drivers/spi_flash` test passes on the AT25SF641. Stock firmware erased (it was RDP
-level 1, now RDP 0).
+## Project status:
 
- **The board ground is tied to the mains (connector P3, probably the phase).**
+* Blinky runs
+* Console at 2 Mbaud on PB6 (TX testpoint)
+* Console also confirms the 26 MHz HSE main clock
+* Pilot wire simulation (simulated zero-cross, not tested on mains yet)
+* Bluetooth LE works (the PC pairs with the peripheral sample, bonds survive a reboot)
+* BLE settings persist on the SPI flash
+* AT25SF641 flash passes the test from `samples/drivers/spi_flash`
+
+## Firmware replacement shortcomings
+
+**The board ground is tied to the mains (connector P3, probably the phase).**
 The supply is non-isolated. Never connect a debugger, USB, serial adapter or scope ground
-while the board is plugged into the mains. Program it powered from 3.3 V only.
+while the board is plugged into the mains.
 
-TX testpoint (original app):
-```
-screen /dev/ttyACM0 2000000
-```
+This firmware replacement require you to erase the stock firmware, with no possible recovery.
+
+You will need:
+* A probe for reflashing the STM32 (ST-Link, FTDI2232, BlackMagicProbe...)
+* A soldering iron and wires
+* A (safe) 5V or 3V3 supply
 
 ## Hardware
 
@@ -36,7 +44,7 @@ screen /dev/ttyACM0 2000000
 | Crystal "NSK J 26TAG" | AP6212 clock, assumed 26 MHz |
 | 32.768 kHz crystal | STM32 LSE (PC14/PC15), starts. Not wired to the AP6212 (MCO1 on PA8 does not reach it) |
 
-## STM32 pin map
+### STM32 pin map
 
 | Pin (LQFP64) | Function | Notes |
 | --- | --- | --- |
@@ -80,41 +88,104 @@ The optotriac LED anode sits on 3V3: PC6 alone turns it on through the cathode s
 All pins except SWD were first read rotated by 90° (16 pins);
 the table above has the corrected pins.
 
-## Bottom test pad (unmarked, near the MCU)
+### Mains connector
 
-```
-o o o                              o o o
-5V?  10k pull-up to VDD  10k to BOOT0  PB6  3V3  GND
-```
+| Pin | Role |
+| --- | --- |
+| P1 | Neutral (inferred) |
+| P2 | Pilot wire output |
+| P3 | Phase (inferred) = board GND |
 
-BOOT0 has a 100 kΩ pull-down, so wiring the BOOT0 pad to the 3V3 pad forces BOOT0 high.
+### Pilot-wire orders
+
+Voltage measured between P2 and neutral. The optotriac fires at the next zero crossing after its
+LED turns on, and the triac turns off at the next zero crossing after it turns off. So toggling
+the LED once per half-cycle (synchronised on PC7, polarity from PC3) selects half-waves.
+
+| Order | Signal | Firmware |
+| --- | --- | --- |
+| Confort | 0 V | LED off |
+| Éco | Full 230 V | LED on continuously |
+| Hors-gel | Negative half-wave | LED on during negative half-waves only |
+| Arrêt | Positive half-wave | LED on during positive half-waves only |
+| Confort −1 / −2 | 230 V for 3 s / 7 s every 5 min | Timed full-wave pulses |
+
+PC0 lets firmware check what actually came out.
+
+### Clocks
+
+HSE 26 MHz → PLL (M=13, N=96, P=2, Q=4) → 96 MHz SYSCLK, 48 MHz PLLQ.
+The crystal frequency is inferred from its marking. If blinky runs at the wrong rate or not at
+all, switch the PLL source to `&clk_hsi` (16 MHz) with `div-m = <8>` in
+`boards/vendor/intuitiv/intuitiv.dts`.
+
+### Bottom test pads
+<!--
+o  TP2
+
+o  TP1
+
+o  TP3
+
+
+
+  | o (1)           USB
+  |
+  | o (2)          +5.5V | o
+P |                      |
+R | o (BOOT0)     USB_DM | o
+O |                      |
+G |               USB_DP | o
+P |                      |
+R |                   0V | o
+O |    | o  SWDIO
+C |    |
+  |    | o  SWCK    Z    | o (GND)
+  |    |            G    |
+  |    | o  SWOV    B    | o (SWDIO)
+  | o (TX)               |             USART ZBG
+  |                 J    | o (SWCK)   ________________
+  | o (3V3)         T    |
+  |                 A    | o (VDDA)    RX  o   o  TX
+  | o (G)           G
+-->
+![Kroki generated Ditaa](https://kroki.io/ditaa/svg/eNqNUEEOgyAQvO8r9ihp0lSNDxBJSGtbjFJqvPgEP-DjC1SEIE06CWzYZWYYFkTZFQCLqflWS9BAXHHBLCfo8Rqo6btZEcxO1blSpg2d3pNYof_yqBDyQpzizB6WJ37z-GFked0_fkdcVOhnXoTDm10FNFvH5vOjpjWHyXUy_mTEXwnAU2yhzIHubGtF3BfKkcSvjnLWvcSJcsBEllug2txbLTVHcD6lKr2RDH2SwvUurBirLbMf0QQyS45OlpM4vtaDD6w3cik=)
+
+
+* The BOOT0 testpoint has a 10k resistor to the BOOT0 pin. Since BOOT0 has a 100 kΩ pull-down,
+Setting this pad to 3V3 forces BOOT0 to 3V, which is a level high.
+* Prog proc 1 is undetermined, probably 5V. Prog proc 2 is undetermined.
+* Prog proc (STM32) TP TX is on PB6.
+* RX is not provided.
+* TX baud rate was 2000000 on the original version, we keep the value
+* ZBG (Atmel) JTAG SWDIO is PA31 and SWCLK Atmel PA30.
+* ZBG (Atmel) RX is PA25 and TX is PA24.
+* SW0V is GND.
+* 5.5V is the silkscreen marking, should be 5V.
 
 PB11 also reads low with a pull-up: unknown, not in the version group.
 
-## Console
+## How to flash
+### SWD access
 
-Two options, both TX + GND, **bench supply only, never on mains**:
+**While debugging, wire the BOOT0 test pad to the 3V3 pad.**
 
-1. **USB connector, no soldering**: build with `-S cdc-acm-console`, plug USB, open `/dev/ttyACM0`.
-2. **UART on the bottom test pad** (default build): USART1 TX on PB6, **2 000 000 baud 8N1**,
-   the same speed as the stock firmware (it prints `[Intuitiv Gateway]` at boot).
-   With a Nucleo ST-LINK/V2.1: PB6 to CN3 **RX**, read on `/dev/ttyACM0`.
+The reason for this is that there is no easy access to nRST, which has a 280 kOhms pull-up,
+but no testpoint. The way to reflash the board is to use BOOT0 instead.
 
-## SWD access
+This way, every reset then starts the ST ROM bootloader, where SWD always works.
 
-NRST is not reachable (280 kΩ pull-up, no test point), and the stock firmware disables SWD after
-boot. The OpenOCD config uses `reset_config none` (software reset) for that reason.
-
-**While debugging, wire the BOOT0 test pad to the 3V3 pad.** Every reset then starts the ST ROM
-bootloader, where SWD always works. `west flash` (openocd runner, the default) resets into the
+`west flash` (openocd runner, the default) resets into the
 bootloader, writes the flash, then starts the image from its vector table (`intuitiv_run_app` in
-`support/openocd.cfg`): no power-cycle, no manual step. SWD also attaches to a running image.
-Remove the wire to boot the image standalone.
+`support/openocd.cfg`).
+
+Once the firmware is all done, remove the BOOT0 wire to boot the image standalone.
 
 ### Remove readout protection and flash (first time)
 
-The stock firmware ships with RDP level 1. Going back to level 0 **mass-erases the flash**
-(the stock firmware cannot be read out or backed up first).
+The stock firmware ships with RDP level 1, a protection against reading.
+Going back to level 0 **mass-erases the flash**.
+It means the stock firmware cannot be read out or backed up first.
 
 1. Bench 3.3 V supply, ST-LINK on GND / SWDIO / SWCLK (+ VDD_TARGET on 3V3).
 2. Wire the BOOT0 pad to 3V3 and power-cycle.
@@ -138,38 +209,7 @@ The stock firmware ships with RDP level 1. Going back to level 0 **mass-erases t
 
 Later flashes only need step 5.
 
-## Mains connector
-
-| Pin | Role |
-| --- | --- |
-| P1 | Neutral (inferred) |
-| P2 | Pilot wire output |
-| P3 | Phase (inferred) = board GND |
-
-## Pilot-wire orders
-
-Voltage measured between P2 and neutral. The optotriac fires at the next zero crossing after its
-LED turns on, and the triac turns off at the next zero crossing after it turns off. So toggling
-the LED once per half-cycle (synchronised on PC7, polarity from PC3) selects half-waves.
-
-| Order | Signal | Firmware |
-| --- | --- | --- |
-| Confort | 0 V | LED off |
-| Éco | Full 230 V | LED on continuously |
-| Hors-gel | Negative half-wave | LED on during negative half-waves only |
-| Arrêt | Positive half-wave | LED on during positive half-waves only |
-| Confort −1 / −2 | 230 V for 3 s / 7 s every 5 min | Timed full-wave pulses |
-
-PC0 lets firmware check what actually came out.
-
-## Clock
-
-HSE 26 MHz → PLL (M=13, N=96, P=2, Q=4) → 96 MHz SYSCLK, 48 MHz PLLQ.
-The crystal frequency is inferred from its marking. If blinky runs at the wrong rate or not at
-all, switch the PLL source to `&clk_hsi` (16 MHz) with `div-m = <8>` in
-`boards/vendor/intuitiv/intuitiv.dts`.
-
-## Build and flash
+### Build and flash
 
 ```bash
 cd zephyr_workspace
