@@ -26,6 +26,7 @@ screen /dev/ttyACM0 2000000
 | AP6212 (BCM4343A0, not the AP6212A) | Wi-Fi + Bluetooth 4.1 SiP |
 | ATSAMR21E18A | 2.4 GHz 802.15.4 radio MCU |
 | AT25SF641 | 64 Mbit SPI NOR flash, settings in its first 64 KiB |
+| Apple MFi337S3959 (marked "629 3959 1638", 8-pin) | MFi authentication coprocessor 2.0C, I²C1 at 0x10. HomeKit / WAC accessory identity (see MFi coprocessor) |
 | VIPER013LS | Non-isolated offline converter (half-wave rectified mains) |
 | NCP1117 | 3.3 V LDO |
 | MOC3063M | Zero-cross optotriac (triac driver) |
@@ -57,6 +58,8 @@ screen /dev/ttyACM0 2000000
 | PC2 (10) | Hidden button (pairing reset) | `sw1`, active high (switch to 3V3), no external pull: internal pull-down. Pilot wire: press = erase bonds |
 | PA15, PB3, PB4 (50, 55, 56) | Hardware version resistors (assumed) | 6 footprints, 3 fitted, exact pins to trace. With internal pulls, PA15 and PB3 read low, PB4 high |
 | PB6 (58) | Bottom test pad | USART1_TX: console |
+| PB8 (61) | I2C1_SCL → MFi coprocessor pin 7 | 2.1 kΩ pull-up |
+| PB9 (62) | I2C1_SDA → MFi coprocessor pin 2 | 2.2 kΩ pull-up |
 | PA13 (46) | SWDIO | |
 | PA14 (49) | SWCLK | |
 | NRST (7) | Reset | 280 kΩ pull-up, no test point. Not wired to the probe |
@@ -347,6 +350,35 @@ docker run -d --name homeassistant --restart unless-stopped --network host \
 HA then discovers "Intuitiv" from its service UUID (Settings → Devices & services). The
 climate entity has `heat` / `off` (off = Arrêt), plus the presets Confort, Éco, Hors-gel (`away`),
 Confort −1 and Confort −2. It reconnects when the board advertises again.
+
+## MFi coprocessor
+
+The 8-pin chip marked "629 3959 1638" is an Apple MFi authentication coprocessor 2.0C (MFI337S3959, Infineon).
+It is the only device on I²C1 (PB8 SCL, PB9 SDA) and answers at **0x10**. Pinout as measured: 1 and 6 GND,
+2 SDA, 5 VDD, 7 SCL, 8 NC?, 3 and 4 not measured.
+
+`apps/i2c_scan` scans the bus, then reads the chip. It logs to the console only, since USART1 RX is not wired:
+
+```text
+<inf> i2c_scan: ACK at 0x10
+<inf> i2c_scan: device version 5, firmware 1, protocol 2.0
+<inf> i2c_scan: certificate length 908
+<inf> i2c_scan: C:3082038806092a864886f70d010702...
+```
+
+Device version 5 means 2.0C. The `C:` lines are the PKCS#7 certificate (registers 0x31 onward, 128-byte pages).
+The register map comes from [WACResearch `authchip`](https://github.com/BertoldVdb/WACResearch/tree/master/authchip).
+Decode the certificate on the host:
+
+```bash
+grep -ao 'C:[0-9a-f]*' scan.log | cut -c3- | tr -d '\n' | xxd -r -p > mfi_cert.der
+openssl pkcs7 -inform DER -in mfi_cert.der -print_certs -noout -text
+```
+
+The certificate is issued by "Apple iPod Accessories Certification Authority" to
+`CN=IPA_2222AA180718AA06AA2413AA306240`, an RSA key of 1024 bits, valid from 2018-07-18 to 2022-02-14.
+The chip is the HomeKit / WAC accessory identity: a firmware that wants to stay HomeKit-certified needs it.
+Its challenge signing (registers 0x10–0x21) is not used yet.
 
 ## Wi-Fi
 
