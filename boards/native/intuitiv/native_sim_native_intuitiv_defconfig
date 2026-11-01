@@ -2,3 +2,5 @@
 
 CONFIG_CONSOLE=y
 CONFIG_GPIO=y
+# Same tick as the STM32 (10 kHz): the 5 ms pilot-wire timer must not round to 10 ms
+CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000
